@@ -15,5 +15,8 @@
   "bugs": {
     "url": "https://github.com/thecomingofstages/finance-tracking/issues"
   },
-  "homepage": "https://github.com/thecomingofstages/finance-tracking#readme"
+  "homepage": "https://github.com/thecomingofstages/finance-tracking#readme",
+  "devDependencies": {
+    "@opennextjs/cloudflare": "^1.14.1"
+  }
 }
