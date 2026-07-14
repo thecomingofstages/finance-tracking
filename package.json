@@ -1,0 +1,19 @@
+{
+  "name": "finance-tracking",
+  "version": "1.0.0",
+  "description": "TCOS's Financial Tracking System",
+  "main": "index.js",
+  "scripts": {
+    "test": "npm test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/thecomingofstages/finance-tracking.git"
+  },
+  "author": "",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/thecomingofstages/finance-tracking/issues"
+  },
+  "homepage": "https://github.com/thecomingofstages/finance-tracking#readme"
+}
