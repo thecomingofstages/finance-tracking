@@ -1,0 +1,11 @@
+# Next.js worker (Cloudflare) — local Supabase connection.
+# Copy to web/.dev.vars and fill in the values from `npx supabase status` (local stack).
+# `.dev.vars` is loaded by `wrangler dev` / `wrangler preview` automatically.
+
+SUPABASE_URL=http://127.0.0.1:54321
+
+# `anon` key — safe to send to the browser.
+SUPABASE_ANON_KEY=
+
+# `service_role` key — bypasses RLS. Server-side only; do not expose to the browser.
+SUPABASE_SERVICE_ROLE_KEY=
