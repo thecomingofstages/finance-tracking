@@ -31,7 +31,10 @@ This is a **scaffold + working mock server**, not the real implementation:
 
 - **Real**: app structure, routing, auth/JWT/step-up, all 12 Sequelize models (matching the
   actual shipped schema in `supabase/migrations/20260101000000_init.sql` exactly), request
-  validation shape, error envelope, file upload handling.
+  validation shape, error envelope, file upload handling, **and R2 storage** — receipt and
+  signature uploads genuinely hit Cloudflare R2 (`src/app/utils/R2.util.js`, decoupled from
+  `MOCK_MODE`), independent of everything else in this list still being fixture data. Verify
+  connectivity any time with `node scripts/check-r2.js`.
 - **Mocked**: every helper method returns fixture data instead of querying Postgres. Each one
   has a `// TODO: real implementation —` comment describing what it should do instead, usually
   copied near-verbatim from the matching flow in `docs/backend/03-api-spec.md`.
