@@ -1,0 +1,925 @@
+openapi: 3.1.0
+info:
+  title: TCOS Finance Tracking API
+  version: 0.1.0
+  description: >
+    Hand-maintained OpenAPI spec — source of truth for route shape is
+    docs/backend/03-api-spec.md; keep this in step with it.
+    All money amounts are INTEGER satang (1/100 บาท). Reimbursement status has
+    no draft stage — see ReimbursementStatusValue below.
+servers:
+  - url: http://localhost:4000/v1
+    description: Local mock server (MOCK_MODE=true)
+  - url: https://api.tcos.app/v1
+    description: Production (not deployed yet)
+
+security:
+  - bearerAuth: []
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    reauthToken:
+      type: apiKey
+      in: header
+      name: X-Reauth-Token
+      description: Short-lived step-up token from POST /auth/verify-password (doc 04 §9)
+    serviceToken:
+      type: apiKey
+      in: header
+      name: X-Service-Token
+      description: Enroll/Merch ingress only — never reachable with a user JWT
+
+  parameters:
+    idParam:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    pageParam:
+      name: page
+      in: query
+      schema: { type: integer, minimum: 1, default: 1 }
+    limitParam:
+      name: limit
+      in: query
+      schema: { type: integer, minimum: 1, default: 20 }
+
+  schemas:
+    Envelope:
+      type: object
+      properties:
+        success: { type: boolean }
+      required: [success]
+
+    ErrorResponse:
+      allOf:
+        - $ref: "#/components/schemas/Envelope"
+        - type: object
+          properties:
+            success: { const: false }
+            error:
+              type: object
+              properties:
+                code: { type: string, example: VALIDATION_ERROR }
+                message: { type: string }
+                field: { type: string }
+              required: [code, message]
+          required: [error]
+
+    Meta:
+      type: object
+      properties:
+        page: { type: integer }
+        limit: { type: integer }
+        total: { type: integer }
+
+    ReimbursementStatusValue:
+      type: string
+      enum: [waiting, head_approve, fin_approve, transfer, rejected, delete]
+      description: No DRAFT — a reimbursement is created directly into 'waiting'.
+
+    PaymentStatusValue:
+      type: string
+      enum: [waiting, approved, rejected]
+
+    SourceType:
+      type: string
+      enum: [enroll, merch, spon, other]
+
+    Role:
+      type: string
+      enum: [user, staff, finance, it, hr, owner, admin]
+
+    Title:
+      type: string
+      enum: ["เด็กชาย", "เด็กหญิง", "นาย", "นาง", "นางสาว"]
+
+    Staff:
+      type: object
+      properties:
+        _id: { type: string, format: uuid }
+        title: { $ref: "#/components/schemas/Title" }
+        first_name: { type: string }
+        last_name: { type: string }
+        nickname: { type: string }
+        email: { type: string, format: email }
+        phone: { type: string }
+        line_id: { type: string }
+        role: { $ref: "#/components/schemas/Role" }
+        signature_image: { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    Scope:
+      type: object
+      properties:
+        memberships:
+          type: array
+          items:
+            type: object
+            properties:
+              project_id: { type: string, format: uuid }
+              project_name: { type: string }
+              department_id: { type: string, format: uuid }
+              department_name: { type: string }
+              is_head: { type: boolean }
+              is_finance: { type: boolean }
+              is_manager: { type: boolean }
+        head_of: { type: array, items: { type: string } }
+        finance_of: { type: array, items: { type: string } }
+        manager_of: { type: array, items: { type: string } }
+
+    BankAccount:
+      type: object
+      properties:
+        _id: { type: string, format: uuid }
+        name: { type: string }
+        number: { type: string, description: "Masked (xxxxxx7890) unless viewed by the owner" }
+        provider: { type: string }
+        created_at: { type: string, format: date-time }
+
+    Project:
+      type: object
+      properties:
+        _id: { type: string, format: uuid }
+        name: { type: string }
+        description: { type: string, nullable: true }
+        allocated_budget: { type: integer, description: satang }
+        total_income: { type: integer, description: "satang — no trigger updates this yet, see doc 02 §6" }
+        total_expense: { type: integer, description: "satang — no trigger updates this yet" }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    ProjectTag:
+      type: object
+      properties:
+        _id: { type: string, format: uuid }
+        project_id: { type: string, format: uuid }
+        name: { type: string }
+        allocated_budget: { type: integer }
+        total_income: { type: integer }
+        total_expense: { type: integer }
+
+    Department:
+      type: object
+      properties:
+        _id: { type: string, format: uuid }
+        project_id: { type: string, format: uuid }
+        name: { type: string }
+        allocated_budget: { type: integer }
+        total_expense: { type: integer }
+
+    Source:
+      type: object
+      properties:
+        _id: { type: string, format: uuid }
+        type: { $ref: "#/components/schemas/SourceType" }
+        reference_id: { type: string, format: uuid, nullable: true }
+        tag_id: { type: string, format: uuid, nullable: true, description: optional }
+        project_id: { type: string, format: uuid }
+        expect_amount: { type: integer, description: "satang — note: expect_, not expected_" }
+        actual_amount: { type: integer, description: "satang — no trigger updates this yet" }
+        name: { type: string }
+
+    Payment:
+      type: object
+      properties:
+        _id: { type: string, format: uuid, description: "external registration_id | purchase_id" }
+        user_id: { type: string, format: uuid, nullable: true }
+        source_id: { type: string, format: uuid }
+        expected_amount: { type: integer }
+        promptpay_qr_data: { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+
+    PaymentStatusEntry:
+      type: object
+      properties:
+        status: { $ref: "#/components/schemas/PaymentStatusValue" }
+        actual_amount: { type: integer, nullable: true }
+        staff: { type: object, nullable: true, properties: { nickname: { type: string } } }
+        created_at: { type: string, format: date-time }
+
+    ReimbursementDetail:
+      type: object
+      properties:
+        _id: { type: string, format: uuid }
+        title: { type: string }
+        amount: { type: integer, minimum: 1 }
+
+    Reimbursement:
+      type: object
+      properties:
+        _id: { type: string, format: uuid }
+        staff_dept_id: { type: string, format: uuid }
+        tag_id: { type: string, format: uuid, nullable: true }
+        purpose: { type: string }
+        tracking_id: { type: string, nullable: true }
+        banking_id: { type: string, format: uuid, nullable: true }
+        receipt_link: { type: string, nullable: true, description: "presigned R2 URL, not a raw object key" }
+        latest_status: { $ref: "#/components/schemas/ReimbursementStatusValue" }
+        details:
+          type: array
+          items: { $ref: "#/components/schemas/ReimbursementDetail" }
+        created_at: { type: string, format: date-time }
+
+    ReimbursementStatusEntry:
+      type: object
+      properties:
+        status: { $ref: "#/components/schemas/ReimbursementStatusValue" }
+        staff: { type: object, nullable: true, properties: { nickname: { type: string } } }
+        created_at: { type: string, format: date-time }
+
+  responses:
+    Unauthorized:
+      description: Missing/invalid/expired token
+      content: { application/json: { schema: { $ref: "#/components/schemas/ErrorResponse" } } }
+    Forbidden:
+      description: Insufficient scope
+      content: { application/json: { schema: { $ref: "#/components/schemas/ErrorResponse" } } }
+    NotFound:
+      description: Resource not found
+      content: { application/json: { schema: { $ref: "#/components/schemas/ErrorResponse" } } }
+    ValidationError:
+      description: Bad request
+      content: { application/json: { schema: { $ref: "#/components/schemas/ErrorResponse" } } }
+    Conflict:
+      description: Duplicate / conflict
+      content: { application/json: { schema: { $ref: "#/components/schemas/ErrorResponse" } } }
+    Unprocessable:
+      description: Business-rule rejection
+      content: { application/json: { schema: { $ref: "#/components/schemas/ErrorResponse" } } }
+
+paths:
+  # ---------------------------------------------------------------- Auth (#1-6, 57-59)
+  /auth/claim:
+    post:
+      tags: [Auth]
+      summary: First login — set password (#57)
+      security: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password]
+              properties: { password: { type: string, minLength: 8 } }
+      responses:
+        "201": { description: Session issued }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Email + password login (#1)
+      security: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string }
+      responses:
+        "200": { description: Session issued }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { description: Rate limited }
+
+  /auth/login/supabase:
+    post:
+      tags: [Auth]
+      summary: Login via Supabase Auth session (#58)
+      security: []
+      responses:
+        "200": { description: Session issued }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Terminate session (#2)
+      responses:
+        "204": { description: No Content }
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Rotate access token via refresh cookie (#3)
+      security: []
+      responses:
+        "200": { description: New access token }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /auth/password/forgot:
+    post:
+      tags: [Auth]
+      summary: Request password reset (#5)
+      security: []
+      responses:
+        "200": { description: Always 200 regardless of whether the email exists }
+
+  /auth/password/reset:
+    post:
+      tags: [Auth]
+      summary: Complete password reset (#6)
+      security: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reset_token, password]
+              properties:
+                reset_token: { type: string }
+                password: { type: string, minLength: 8 }
+      responses:
+        "204": { description: No Content }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /auth/verify-password:
+    post:
+      tags: [Auth]
+      summary: Step-up — issue X-Reauth-Token (#59)
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, required: [password], properties: { password: { type: string } } }
+      responses:
+        "200": { description: reauth_token issued }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: Current staff + resolved scope (#4)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Envelope"
+                  - type: object
+                    properties:
+                      data:
+                        allOf:
+                          - $ref: "#/components/schemas/Staff"
+                          - type: object
+                            properties: { scope: { $ref: "#/components/schemas/Scope" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  # ---------------------------------------------------------------- Staff (#7-16, 60)
+  /staff:
+    get:
+      tags: [Staff]
+      summary: List staff (#7) — manager only
+      parameters:
+        - $ref: "#/components/parameters/pageParam"
+        - $ref: "#/components/parameters/limitParam"
+        - { name: department_id, in: query, schema: { type: string, format: uuid } }
+        - { name: project_id, in: query, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: OK }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /staff/{id}:
+    get:
+      tags: [Staff]
+      summary: Get one staff member (#8) — manager only
+      parameters: [{ $ref: "#/components/parameters/idParam" }]
+      responses:
+        "200": { description: OK }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /staff/me:
+    patch:
+      tags: [Staff]
+      summary: Update own profile (#9)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                nickname: { type: string }
+                phone: { type: string }
+                line_id: { type: string }
+                title: { $ref: "#/components/schemas/Title" }
+      responses:
+        "200": { description: OK }
+        "400": { $ref: "#/components/responses/ValidationError" }
+
+  /staff/me/bank-accounts:
+    get:
+      tags: [Staff]
+      summary: List own bank accounts (#14)
+      responses:
+        "200": { description: OK }
+    post:
+      tags: [Staff]
+      summary: Add bank account — immutable after creation (#15)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, number, provider]
+              properties:
+                name: { type: string }
+                number: { type: string, minLength: 10, maxLength: 12 }
+                provider: { type: string }
+      responses:
+        "201": { description: Created }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /staff/me/bank-accounts/{id}:
+    delete:
+      tags: [Staff]
+      summary: Remove bank account (#16)
+      parameters: [{ $ref: "#/components/parameters/idParam" }]
+      responses:
+        "204": { description: No Content }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /staff/me/signature:
+    post:
+      tags: [Staff]
+      summary: Upload digital signature — step-up required (#60)
+      security: [{ bearerAuth: [], reauthToken: [] }]
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties: { signature: { type: string, format: binary } }
+      responses:
+        "200": { description: OK }
+        "401": { description: REAUTH_REQUIRED }
+
+  /admin/staff:
+    post:
+      tags: [Staff]
+      summary: Provision a staff account (#10) — admin only
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [first_name, last_name, nickname, email]
+              properties:
+                title: { $ref: "#/components/schemas/Title" }
+                first_name: { type: string }
+                last_name: { type: string }
+                nickname: { type: string }
+                email: { type: string, format: email }
+                phone: { type: string }
+      responses:
+        "201": { description: Created }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /admin/staff/import:
+    post:
+      tags: [Staff]
+      summary: Bulk provision from CSV (#11) — admin only
+      requestBody:
+        content:
+          multipart/form-data:
+            schema: { type: object, properties: { file: { type: string, format: binary } } }
+      responses:
+        "201": { description: All-or-nothing; per-row errors on failure }
+
+  /admin/staff/{id}:
+    patch:
+      tags: [Staff]
+      summary: Admin update staff, incl. email/role (#12)
+      parameters: [{ $ref: "#/components/parameters/idParam" }]
+      responses:
+        "200": { description: OK }
+        "409": { $ref: "#/components/responses/Conflict" }
+    delete:
+      tags: [Staff]
+      summary: Deactivate staff — soft delete only (#13)
+      parameters: [{ $ref: "#/components/parameters/idParam" }]
+      responses:
+        "204": { description: No Content }
+
+  # ---------------------------------------------------------------- Projects (#17-30)
+  /projects:
+    get:
+      tags: [Project]
+      summary: List projects (#17)
+      parameters: [{ $ref: "#/components/parameters/pageParam" }, { $ref: "#/components/parameters/limitParam" }]
+      responses:
+        "200": { description: OK }
+    post:
+      tags: [Project]
+      summary: Create project — finance/admin only (#18)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string }
+                description: { type: string }
+                allocated_budget: { type: integer }
+      responses:
+        "201": { description: Created }
+
+  /projects/{id}:
+    get:
+      tags: [Project]
+      summary: Project detail (#19)
+      parameters: [{ $ref: "#/components/parameters/idParam" }]
+      responses:
+        "200": { description: OK }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [Project]
+      summary: Update project (#20)
+      parameters: [{ $ref: "#/components/parameters/idParam" }]
+      responses:
+        "200": { description: OK }
+    delete:
+      tags: [Project]
+      summary: Delete project — admin only (#21)
+      parameters: [{ $ref: "#/components/parameters/idParam" }]
+      responses:
+        "204": { description: No Content }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /projects/{id}/tags:
+    get:
+      tags: [Project]
+      summary: List tags (#22)
+      parameters: [{ $ref: "#/components/parameters/idParam" }]
+      responses: { "200": { description: OK } }
+    post:
+      tags: [Project]
+      summary: Bulk create tags (#23)
+      parameters: [{ $ref: "#/components/parameters/idParam" }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tags]
+              properties:
+                tags:
+                  type: array
+                  items:
+                    type: object
+                    required: [name]
+                    properties: { name: { type: string }, allocated_budget: { type: integer } }
+      responses:
+        "201": { description: Created }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /tags/{id}:
+    patch:
+      tags: [Project]
+      summary: Update tag (#24)
+      parameters: [{ $ref: "#/components/parameters/idParam" }]
+      responses: { "200": { description: OK } }
+    delete:
+      tags: [Project]
+      summary: Delete tag (#25)
+      parameters: [{ $ref: "#/components/parameters/idParam" }]
+      responses: { "204": { description: No Content }, "409": { $ref: "#/components/responses/Conflict" } }
+
+  /projects/{id}/departments:
+    get:
+      tags: [Project]
+      summary: List departments (#26)
+      parameters: [{ $ref: "#/components/parameters/idParam" }]
+      responses: { "200": { description: OK } }
+    post:
+      tags: [Project]
+      summary: Bulk create departments (#27)
+      parameters: [{ $ref: "#/components/parameters/idParam" }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [departments]
+              properties:
+                departments:
+                  type: array
+                  items:
+                    type: object
+                    required: [name]
+                    properties: { name: { type: string }, allocated_budget: { type: integer } }
+      responses: { "201": { description: Created } }
+
+  /departments/{id}:
+    patch:
+      tags: [Project]
+      summary: Update department (#28)
+      parameters: [{ $ref: "#/components/parameters/idParam" }]
+      responses: { "200": { description: OK } }
+    delete:
+      tags: [Project]
+      summary: Delete department (#29)
+      parameters: [{ $ref: "#/components/parameters/idParam" }]
+      responses: { "204": { description: No Content }, "409": { $ref: "#/components/responses/Conflict" } }
+
+  /projects/{id}/staff:
+    get:
+      tags: [Project]
+      summary: List project staff — manager only (#30)
+      parameters: [{ $ref: "#/components/parameters/idParam" }]
+      responses: { "200": { description: OK }, "403": { $ref: "#/components/responses/Forbidden" } }
+
+  # ---------------------------------------------------------------- Sources (#33-36)
+  /projects/{id}/sources:
+    get:
+      tags: [Sources]
+      summary: List funding sources (#33) — finance only
+      parameters: [{ $ref: "#/components/parameters/idParam" }]
+      responses: { "200": { description: OK } }
+    post:
+      tags: [Sources]
+      summary: Create a funding source (#34)
+      parameters: [{ $ref: "#/components/parameters/idParam" }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [type, name]
+              properties:
+                type: { $ref: "#/components/schemas/SourceType" }
+                name: { type: string }
+                tag_id: { type: string, format: uuid, nullable: true }
+                expect_amount: { type: integer }
+                reference_id: { type: string, format: uuid, nullable: true }
+      responses: { "201": { description: Created }, "400": { $ref: "#/components/responses/ValidationError" } }
+
+  /sources/{id}:
+    patch:
+      tags: [Sources]
+      summary: Update source — never actual_amount/type/reference_id/project_id (#35)
+      parameters: [{ $ref: "#/components/parameters/idParam" }]
+      responses: { "200": { description: OK } }
+    delete:
+      tags: [Sources]
+      summary: Delete source (#36)
+      parameters: [{ $ref: "#/components/parameters/idParam" }]
+      responses: { "204": { description: No Content }, "409": { $ref: "#/components/responses/Conflict" } }
+
+  # ---------------------------------------------------------------- Payments (#37-40)
+  /payments:
+    post:
+      tags: [Payments]
+      summary: Ingest a payment from Enroll/Merch — service token only, idempotent (#37)
+      security: [{ serviceToken: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [_id, source_id]
+              properties:
+                _id: { type: string, format: uuid, description: "registration_id | purchase_id" }
+                user_id: { type: string, format: uuid }
+                source_id: { type: string, format: uuid }
+                expected_amount: { type: integer }
+                promptpay_qr_data: { type: string }
+      responses:
+        "201": { description: Created (or 200 if already ingested — idempotent) }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    get:
+      tags: [Payments]
+      summary: Checkslip queue (#38) — finance only
+      parameters:
+        - { name: project_id, in: query, required: true, schema: { type: string, format: uuid } }
+        - { name: status, in: query, schema: { $ref: "#/components/schemas/PaymentStatusValue" } }
+        - { $ref: "#/components/parameters/pageParam" }
+        - { $ref: "#/components/parameters/limitParam" }
+      responses: { "200": { description: "Sorted oldest-first" } }
+
+  /payments/{id}:
+    get:
+      tags: [Payments]
+      summary: Payment detail + full history (#39)
+      parameters: [{ $ref: "#/components/parameters/idParam" }]
+      responses: { "200": { description: OK } }
+
+  /payments/approve:
+    post:
+      tags: [Payments]
+      summary: Bulk approve/reject — step-up required, idempotent per item (#40)
+      security: [{ bearerAuth: [], reauthToken: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [decisions]
+              properties:
+                decisions:
+                  type: array
+                  items:
+                    type: object
+                    required: [payment_id, status]
+                    properties:
+                      payment_id: { type: string, format: uuid }
+                      status: { type: string, enum: [approved, rejected] }
+                      actual_amount: { type: integer }
+      responses:
+        "200":
+          description: "Partial-success by design — each item is approved/rejected/skipped"
+        "401": { description: REAUTH_REQUIRED }
+
+  # ---------------------------------------------------------------- Reimbursements (#41-49)
+  /reimbursements:
+    post:
+      tags: [Reimbursements]
+      summary: Create — lands directly in 'waiting', no draft stage (#41)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [department_id, purpose, details]
+              properties:
+                department_id: { type: string, format: uuid }
+                tag_id: { type: string, format: uuid, nullable: true }
+                purpose: { type: string }
+                banking_id: { type: string, format: uuid, nullable: true }
+                details:
+                  type: array
+                  items:
+                    type: object
+                    required: [title, amount]
+                    properties: { title: { type: string }, amount: { type: integer, minimum: 1 } }
+      responses: { "201": { description: Created }, "400": { $ref: "#/components/responses/ValidationError" } }
+    get:
+      tags: [Reimbursements]
+      summary: List — scoped to what the caller requested or can approve (#42)
+      parameters:
+        - { name: status, in: query, schema: { $ref: "#/components/schemas/ReimbursementStatusValue" } }
+        - { name: department_id, in: query, schema: { type: string, format: uuid } }
+        - { name: project_id, in: query, schema: { type: string, format: uuid } }
+        - { name: mine, in: query, schema: { type: boolean } }
+        - { $ref: "#/components/parameters/pageParam" }
+        - { $ref: "#/components/parameters/limitParam" }
+      responses: { "200": { description: OK } }
+
+  /reimbursements/import:
+    post:
+      tags: [Reimbursements]
+      summary: Bulk import from Google Form CSV — lands in 'waiting' immediately (#49)
+      requestBody:
+        content:
+          multipart/form-data:
+            schema: { type: object, properties: { file: { type: string, format: binary } } }
+      responses: { "201": { description: Per-row result } }
+
+  /reimbursements/{id}:
+    get:
+      tags: [Reimbursements]
+      summary: Detail — requester, approver, finance, or owner (#43)
+      parameters: [{ $ref: "#/components/parameters/idParam" }]
+      responses: { "200": { description: OK }, "403": { $ref: "#/components/responses/Forbidden" } }
+    patch:
+      tags: [Reimbursements]
+      summary: Edit — only while waiting or rejected (#44)
+      parameters: [{ $ref: "#/components/parameters/idParam" }]
+      responses: { "200": { description: OK }, "422": { $ref: "#/components/responses/Unprocessable" } }
+    delete:
+      tags: [Reimbursements]
+      summary: Cancel — valid from waiting or rejected (#45)
+      parameters: [{ $ref: "#/components/parameters/idParam" }]
+      responses: { "204": { description: No Content }, "422": { $ref: "#/components/responses/Unprocessable" } }
+
+  /reimbursements/{id}/receipt:
+    post:
+      tags: [Reimbursements]
+      summary: Upload receipt (#46)
+      parameters: [{ $ref: "#/components/parameters/idParam" }]
+      requestBody:
+        content:
+          multipart/form-data:
+            schema: { type: object, properties: { receipt: { type: string, format: binary } } }
+      responses: { "200": { description: OK } }
+
+  /reimbursements/{id}/status:
+    post:
+      tags: [Reimbursements]
+      summary: Advance the approval chain — step-up required on every call (#47)
+      security: [{ bearerAuth: [], reauthToken: [] }]
+      parameters: [{ $ref: "#/components/parameters/idParam" }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { $ref: "#/components/schemas/ReimbursementStatusValue" }
+                tracking_id: { type: string, description: required for head_approve -> fin_approve }
+                reason: { type: string, description: required for any -> rejected }
+      responses:
+        "200": { description: OK }
+        "401": { description: REAUTH_REQUIRED }
+        "422": { description: INVALID_TRANSITION — see docs/backend/04-authorization.md §4 }
+
+  /reimbursements/{id}/document:
+    get:
+      tags: [Documents]
+      summary: Render ใบเบิกเงิน / ใบสำคัญจ่าย (#48)
+      parameters:
+        - { $ref: "#/components/parameters/idParam" }
+        - { name: type, in: query, required: true, schema: { type: string, enum: [request, voucher] } }
+        - { name: format, in: query, schema: { type: string, enum: [pdf, html], default: pdf } }
+      responses:
+        "200":
+          description: PDF or HTML document
+          content:
+            application/pdf: { schema: { type: string, format: binary } }
+            text/html: { schema: { type: string } }
+        "422": { description: "NOT_APPROVED — voucher requires fin_approve or transfer" }
+
+  # ---------------------------------------------------------------- Reports (#50-56)
+  /reports/summary:
+    get:
+      tags: [Reports]
+      summary: Dashboard totals (#50)
+      parameters:
+        - { name: project_id, in: query, schema: { type: string, format: uuid } }
+        - { name: tag_id, in: query, schema: { type: string, format: uuid } }
+        - { name: department_id, in: query, schema: { type: string, format: uuid } }
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+      responses: { "200": { description: OK } }
+
+  /reports/cashflow:
+    get:
+      tags: [Reports]
+      summary: "/ page breakdown — finance/owner only (#51)"
+      responses: { "200": { description: OK } }
+
+  /reports/journal:
+    get:
+      tags: [Reports]
+      summary: สมุดรายวัน — finance/owner only (#52)
+      parameters:
+        - { name: project_id, in: query, schema: { type: string, format: uuid } }
+        - { name: month, in: query, schema: { type: string, example: "2026-07" } }
+      responses: { "200": { description: OK } }
+
+  /reports/journal/export:
+    post:
+      tags: [Reports]
+      summary: Download journal as a file — finance/owner only (#53)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties: { format: { type: string, enum: [xlsx, pdf] } }
+      responses:
+        "200":
+          description: "File download. Mock returns CSV for xlsx (real XLSX not wired up yet)."
+          content:
+            application/pdf: { schema: { type: string, format: binary } }
+            text/csv: { schema: { type: string } }
+
+  /reports/ledger:
+    get:
+      tags: [Reports]
+      summary: "บัญชีแยกประเภท — BLOCKED (#54)"
+      description: >
+        Not reachable from the current schema — no chart of accounts.
+        See docs/backend/05-open-questions.md #1. Returns 501 until that's decided.
+      responses:
+        "501": { description: Not implemented — blocked pending a schema decision }
+
+  /reports/top-expenses:
+    get:
+      tags: [Reports]
+      summary: Top-K most expensive line items (#55)
+      parameters:
+        - { name: project_id, in: query, schema: { type: string, format: uuid } }
+        - { name: limit, in: query, schema: { type: integer, default: 5 } }
+      responses: { "200": { description: OK } }
+
+  /reports/sponsors:
+    get:
+      tags: [Reports]
+      summary: Sponsor details per project — finance/owner only (#56)
+      parameters: [{ name: project_id, in: query, schema: { type: string, format: uuid } }]
+      responses: { "200": { description: OK } }

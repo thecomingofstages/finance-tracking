@@ -1,14 +1,45 @@
 {
   "name": "finance-tracking-api",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
+  "description": "TCOS Finance Tracking — backend API",
+  "main": "src/index.js",
   "scripts": {
-    "start": "node ./bin/www"
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "lint": "eslint src",
+    "test": "jest",
+    "gen:client": "node scripts/generate-fe-client.js"
   },
   "dependencies": {
-    "cookie-parser": "~1.4.4",
-    "debug": "~2.6.9",
-    "express": "~4.16.1",
-    "morgan": "~1.9.1"
+    "express": "^4.19.2",
+    "sequelize": "^6.37.3",
+    "pg": "^8.12.0",
+    "pg-hstore": "^2.3.4",
+    "@supabase/supabase-js": "^2.45.4",
+    "@aws-sdk/client-s3": "^3.632.0",
+    "@aws-sdk/s3-request-presigner": "^3.632.0",
+    "jsonwebtoken": "^9.0.2",
+    "bcrypt": "^5.1.1",
+    "uuid": "^10.0.0",
+    "zod": "^3.23.8",
+    "multer": "^1.4.5-lts.1",
+    "qrcode": "^1.5.4",
+    "papaparse": "^5.4.1",
+    "pino": "^9.3.2",
+    "pino-http": "^10.2.0",
+    "cors": "^2.8.5",
+    "helmet": "^7.1.0",
+    "cookie-parser": "^1.4.6",
+    "express-rate-limit": "^7.4.0",
+    "dotenv": "^16.4.5"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "supertest": "^7.0.0",
+    "eslint": "^9.9.0",
+    "prettier": "^3.3.3",
+    "pino-pretty": "^11.2.2",
+    "openapi-typescript": "^7.4.0"
   }
 }
