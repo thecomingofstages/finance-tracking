@@ -1,6 +1,7 @@
 const express = require("express");
 const { app: appConf, validate } = require("./app/config/init");
 const { mountGlobal } = require("./app/middleware/init");
+const { mountRoot } = require("./app/routes/root.routes");
 const { mountV1 } = require("./app/routes/init");
 const { errorHandler, notFoundHandler } = require("./app/middleware/ErrorHandler.middleware");
 const { connect } = require("./app/database/init");
@@ -11,6 +12,7 @@ async function main() {
 
   const app = express();
   mountGlobal(app);
+  mountRoot(app);
   mountV1(app);
   app.use(notFoundHandler);
   app.use(errorHandler);
