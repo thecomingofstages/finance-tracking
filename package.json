@@ -8,7 +8,11 @@
     "supabase:start": "supabase start",
     "supabase:stop": "supabase stop",
     "supabase:status": "supabase status",
-    "supabase:reset": "supabase db reset"
+    "supabase:reset": "supabase db reset",
+    "install:all": "npm install && npm install --prefix api && npm install --prefix web",
+    "dev": "concurrently -n API,WEB -c blue,green \"npm run dev --prefix api\" \"npm run dev --prefix web\"",
+    "dev:api": "npm run dev --prefix api",
+    "dev:web": "npm run dev --prefix web"
   },
   "repository": {
     "type": "git",
@@ -22,6 +26,7 @@
   "homepage": "https://github.com/thecomingofstages/finance-tracking#readme",
   "devDependencies": {
     "@opennextjs/cloudflare": "^1.14.1",
+    "concurrently": "^8.2.2",
     "supabase": "^2.109.1"
   }
 }
