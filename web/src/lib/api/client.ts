@@ -14,16 +14,22 @@ export const api = createClient<paths>({
 });
 
 /**
- * Attaches the current session's access token. Call this once you have a token (e.g. after
- * POST /auth/login) — every subsequent request through `api` will carry it.
+ * Attaches the current session's access token to every request through `api`. Safe to call
+ * repeatedly — e.g. after login, and again after each refresh — it replaces the previous
+ * middleware rather than stacking a new one on top (openapi-fetch's `.use()` accumulates
+ * middleware indefinitely; without the eject() below, calling this twice would leave two
+ * Authorization-setting middlewares registered instead of one).
  */
+let authMiddleware: Parameters<typeof api.use>[0] | null = null;
 export function setAccessToken(token: string | null) {
-  api.use({
+  if (authMiddleware) api.eject(authMiddleware);
+  authMiddleware = {
     onRequest({ request }) {
       if (token) request.headers.set("Authorization", `Bearer ${token}`);
       return request;
     },
-  });
+  };
+  api.use(authMiddleware);
 }
 
 /**
