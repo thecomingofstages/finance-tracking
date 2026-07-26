@@ -1,13 +1,14 @@
 const { Model, DataTypes } = require("sequelize");
 
 class ReimbursementDetail extends Model {
-  static initModel(sequelize) {
+  static initModel(sequelize, schema) {
     ReimbursementDetail.init(
       {
         _id: {
           type: DataTypes.UUID,
           primaryKey: true,
-          defaultValue: sequelize.literal("uuid_generate_v7()"),
+          field: "_id",
+          defaultValue: sequelize.literal(`${schema}.uuid_generate_v7()`),
         },
         reimbursement_id: { type: DataTypes.UUID, allowNull: false },
         title: { type: DataTypes.TEXT, allowNull: false },
@@ -20,6 +21,7 @@ class ReimbursementDetail extends Model {
       },
       {
         sequelize,
+        schema,
         modelName: "ReimbursementDetail",
         tableName: "reimbursement_detail",
         underscored: true,

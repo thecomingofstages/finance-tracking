@@ -2,13 +2,14 @@ const { Model, DataTypes } = require("sequelize");
 const { REIMBURSEMENT_STATUSES } = require("../utils/enums.util");
 
 class Reimbursement extends Model {
-  static initModel(sequelize) {
+  static initModel(sequelize, schema) {
     Reimbursement.init(
       {
         _id: {
           type: DataTypes.UUID,
           primaryKey: true,
-          defaultValue: sequelize.literal("uuid_generate_v7()"),
+          field: "_id",
+          defaultValue: sequelize.literal(`${schema}.uuid_generate_v7()`),
         },
         staff_dept_id: { type: DataTypes.UUID, allowNull: false },
         tag_id: DataTypes.UUID, // optional
@@ -24,6 +25,7 @@ class Reimbursement extends Model {
       },
       {
         sequelize,
+        schema,
         modelName: "Reimbursement",
         tableName: "reimbursement",
         underscored: true,

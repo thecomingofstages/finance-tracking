@@ -10,7 +10,12 @@ enabled = true
 port = 54321
 # Schemas to expose in your API. Tables, views and stored procedures in this schema will get API
 # endpoints. `public` and `graphql_public` schemas are included by default.
-schemas = ["public", "graphql_public"]
+# `finance` added and listed first: that's where every table in this app actually lives (see
+# supabase/migrations/20260101000000_init.sql), and PostgREST uses the first schema here as the
+# default profile for requests that don't send an Accept-Profile/Content-Profile header. Only
+# matters if something queries via supabase-js/PostgREST instead of our own backend's direct
+# Postgres connection.
+schemas = ["finance", "public", "graphql_public"]
 # Extra schemas to add to the search_path of every request.
 extra_search_path = ["public", "extensions"]
 # The maximum number of rows returns from a view, table, or stored procedure. Limits payload size

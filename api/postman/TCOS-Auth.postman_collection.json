@@ -1,0 +1,258 @@
+{
+  "info": {
+    "_postman_id": "b6f1a6b0-1a3e-4b0a-9c1d-tcos-auth-0001",
+    "name": "TCOS Finance Tracking — Auth (chompoo)",
+    "description": "The 9 auth endpoints owned by chompoo — POST /auth/login, /logout, /refresh, GET /auth/me, POST /auth/password/forgot, /password/reset, /claim, /login/supabase, /verify-password.\n\nAll real (non-mock) as of this collection — every request here hits the actual `staff` table via Postgres, regardless of MOCK_MODE (which only still applies to the other 6 domains). See api/README.md and docs/backend/03-api-spec.md §4.\n\n**Before this can succeed against a live server** you need a reachable Postgres with the `staff` table (local `supabase start`, or the hosted project once its schema is pushed) AND at least one seeded `staff` row. See the collection-level `Setup notes` request for the full checklist.\n\nRun order for the happy path: Login → Get Me → Verify Password (step-up) → Refresh → Logout. Claim / Login via Supabase / Forgot / Reset are separate flows, run independently.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:4000/v1", "type": "string" },
+    { "key": "email", "value": "golf@tcos.app", "type": "string" },
+    { "key": "password", "value": "Passw0rd!2026", "type": "string" },
+    { "key": "access_token", "value": "", "type": "string" },
+    { "key": "reauth_token", "value": "", "type": "string" },
+    { "key": "reset_token", "value": "", "type": "string" },
+    { "key": "supabase_access_token", "value": "", "type": "string" },
+    { "key": "supabase_url", "value": "https://gdvmhtvawpqmgexajzwx.supabase.co", "type": "string" },
+    { "key": "supabase_publishable_key", "value": "sb_publishable_LjInai1LFmtrw3v0uRx3iA_eeEPKqv7", "type": "string" },
+    { "key": "supabase_email", "value": "*add your Supabase email*", "type": "string" },
+    { "key": "supabase_password", "value": "*add your Supabase password*", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "0. Setup notes (read me)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": { "raw": "{{base_url}}/health", "host": ["{{base_url}}"], "path": ["health"] },
+        "description": "Not an auth endpoint — just a harmless request to hang these notes on.\n\nTo run this collection for real you need, in order:\n\n1. A reachable Postgres with the shipped schema applied — either `npm run supabase:start` (local Docker) from the repo root, or the hosted project (already live as of this collection). Point `api/.env`'s DB_HOST/DB_PORT at whichever one you're using.\n2. At least one row in `staff` with a real email — added by an admin (there's no self-signup endpoint by design). The seed data has 6 (4 already claimed, 2 not).\n3. For Claim / Login via Supabase specifically: a matching Supabase Auth user (`auth.users`, same email) — separate system from our own `staff` table. Run \"7b. Get Supabase session (dev helper)\" to mint a real token directly in Postman (no manual token-copying needed); see that request's description for how to create the Supabase Auth user itself if it doesn't exist yet.\n4. Plain email+password Login only needs step 1 + 2, plus running Claim once (or inserting a bcrypt hash directly) to give that staff row a password_hash."
+      },
+      "response": []
+    },
+    {
+      "name": "1. Login",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "if (pm.response.code === 200) {",
+              "  const data = pm.response.json().data;",
+              "  pm.collectionVariables.set('access_token', data.access_token);",
+              "  pm.test('got an access token', () => pm.expect(data.access_token).to.be.a('string'));",
+              "  pm.test('never leaks refresh_token or password_hash in the body', () => {",
+              "    pm.expect(data.refresh_token).to.be.undefined;",
+              "    pm.expect(data.staff.password_hash).to.be.undefined;",
+              "  });",
+              "  pm.test('sets an HttpOnly refresh_token cookie', () => {",
+              "    pm.expect(pm.cookies.has('refresh_token')).to.be.true;",
+              "  });",
+              "} else {",
+              "  pm.test('login failed — see response body', () => pm.expect.fail(pm.response.text()));",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\"\n}"
+        },
+        "url": { "raw": "{{base_url}}/auth/login", "host": ["{{base_url}}"], "path": ["auth", "login"] },
+        "description": "#1 — real Staff lookup by email (case-insensitive), bcrypt.compare against password_hash. Same generic 401 INVALID_CREDENTIALS whether the email doesn't exist, the password's wrong, or the account was never claimed — doc 03 §4."
+      },
+      "response": []
+    },
+    {
+      "name": "2. Get Me",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status is 200', () => pm.response.to.have.status(200));",
+              "pm.test('body is the real staff record, no password_hash', () => {",
+              "  const data = pm.response.json().data;",
+              "  pm.expect(data.email).to.be.a('string');",
+              "  pm.expect(data.password_hash).to.be.undefined;",
+              "  pm.expect(data.scope).to.exist;",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }],
+        "url": { "raw": "{{base_url}}/auth/me", "host": ["{{base_url}}"], "path": ["auth", "me"] },
+        "description": "#4 — real Staff row by the token's sub. `scope` (department memberships) still comes from the mock-mode permissive scope — that's shared authorization infra outside these 9 endpoints, see docs/backend/04-authorization.md §2."
+      },
+      "response": []
+    },
+    {
+      "name": "3. Verify Password (step-up)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "if (pm.response.code === 200) {",
+              "  pm.collectionVariables.set('reauth_token', pm.response.json().data.reauth_token);",
+              "  pm.test('got a reauth token', () => pm.expect(pm.response.json().data.reauth_token).to.be.a('string'));",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{access_token}}" }
+        ],
+        "body": { "mode": "raw", "raw": "{\n  \"password\": \"{{password}}\"\n}" },
+        "url": { "raw": "{{base_url}}/auth/verify-password", "host": ["{{base_url}}"], "path": ["auth", "verify-password"] },
+        "description": "#59 — step-up re-auth (doc 04 §9). Real bcrypt.compare against the current staff row. Returns a 5-min `reauth_token` for X-Reauth-Token on sensitive actions (payment approve, reimbursement status change, signature upload)."
+      },
+      "response": []
+    },
+    {
+      "name": "4. Refresh",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "if (pm.response.code === 200) {",
+              "  pm.collectionVariables.set('access_token', pm.response.json().data.access_token);",
+              "  pm.test('got a new access token', () => pm.expect(pm.response.json().data.access_token).to.be.a('string'));",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": { "raw": "{{base_url}}/auth/refresh", "host": ["{{base_url}}"], "path": ["auth", "refresh"] },
+        "description": "#3 — no body, no Authorization header: relies entirely on the refresh_token cookie Postman captured from Login (its cookie jar replays it automatically for the same host even though it's HttpOnly). Verifies the cookie is really typ:\"refresh\" and reloads the live staff row before reissuing a session."
+      },
+      "response": []
+    },
+    {
+      "name": "5. Logout",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }],
+        "url": { "raw": "{{base_url}}/auth/logout", "host": ["{{base_url}}"], "path": ["auth", "logout"] },
+        "description": "#2 — clears the refresh_token cookie. Requires a currently-valid access token; doesn't touch the DB."
+      },
+      "response": []
+    },
+    {
+      "name": "6. Forgot Password",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{email}}\"\n}" },
+        "url": { "raw": "{{base_url}}/auth/password/forgot", "host": ["{{base_url}}"], "path": ["auth", "password", "forgot"] },
+        "description": "#5 — always returns the same generic message regardless of whether the email exists (doc 03 §4). No email provider is wired up yet, so on a real match the server LOGS the reset link instead of sending it — copy the `reset_token` out of the API server's console output and paste it into the next request's `reset_token` variable."
+      },
+      "response": []
+    },
+    {
+      "name": "7. Reset Password",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"reset_token\": \"{{reset_token}}\",\n  \"password\": \"a-brand-new-password\"\n}"
+        },
+        "url": { "raw": "{{base_url}}/auth/password/reset", "host": ["{{base_url}}"], "path": ["auth", "password", "reset"] },
+        "description": "#6 — set the `reset_token` collection variable from the server log first (see request 6). Existing access/refresh tokens for that staff member are NOT invalidated by this — there's no session store yet (doc 02 §6), a known real gap."
+      },
+      "response": []
+    },
+    {
+      "name": "7b. Get Supabase session (dev helper)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "if (pm.response.code === 200) {",
+              "  const data = pm.response.json();",
+              "  pm.collectionVariables.set('supabase_access_token', data.access_token);",
+              "  pm.test('got a Supabase access token', () => pm.expect(data.access_token).to.be.a('string'));",
+              "} else {",
+              "  pm.test('Supabase sign-in failed — see response body', () => pm.expect.fail(pm.response.text()));",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "apikey", "value": "{{supabase_publishable_key}}" }
+        ],
+        "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{supabase_email}}\",\n  \"password\": \"{{supabase_password}}\"\n}" },
+        "url": {
+          "raw": "{{supabase_url}}/auth/v1/token?grant_type=password",
+          "host": ["{{supabase_url}}"],
+          "path": ["auth", "v1", "token"],
+          "query": [{ "key": "grant_type", "value": "password" }]
+        },
+        "description": "NOT one of the 9 auth endpoints — hits Supabase's own Auth API directly (GoTrue password grant), not our backend, to mint a real Supabase session for the next two requests. Sets `supabase_access_token` automatically.\n\nRequires a real Supabase Auth user (`auth.users`) for `supabase_email` — separate from our own `staff` table. Create one with SUPABASE_SECRET_KEY:\n```\nPOST {{supabase_url}}/auth/v1/admin/users\nAuthorization: Bearer <SUPABASE_SECRET_KEY>\napikey: <SUPABASE_SECRET_KEY>\n{ \"email\": \"...\", \"password\": \"...\", \"email_confirm\": true }\n```\nSupabase Auth's password here is independent of our own `staff.password_hash` — they don't need to match. Session tokens expire in ~1hr (project's jwt_expiry), so re-run this whenever Claim/Login via Supabase start 401ing with an expired token."
+      },
+      "response": []
+    },
+    {
+      "name": "8. Claim (first-time, via Supabase)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{supabase_access_token}}" }
+        ],
+        "body": { "mode": "raw", "raw": "{\n  \"password\": \"first-real-password\"\n}" },
+        "url": { "raw": "{{base_url}}/auth/claim", "host": ["{{base_url}}"], "path": ["auth", "claim"] },
+        "description": "#57 — the Authorization header here is a SUPABASE session access_token, not one of ours (this route deliberately doesn't accept our Bearer tokens). Run \"7b. Get Supabase session\" first to populate `supabase_access_token` — point `supabase_email` at a staff row that's NOT claimed yet (password_hash NULL — e.g. fah@tcos.app or ploy@tcos.app in the seed data) or this 409s ALREADY_CLAIMED. Fails NOT_PROVISIONED if no `staff` row matches that email at all."
+      },
+      "response": []
+    },
+    {
+      "name": "9. Login via Supabase",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "if (pm.response.code === 200) {",
+              "  pm.collectionVariables.set('access_token', pm.response.json().data.access_token);",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Authorization", "value": "Bearer {{supabase_access_token}}" }],
+        "url": { "raw": "{{base_url}}/auth/login/supabase", "host": ["{{base_url}}"], "path": ["auth", "login", "supabase"] },
+        "description": "#58 — alternate login for an already-claimed account via a Supabase session token (same `supabase_access_token` variable as Claim, from \"7b. Get Supabase session\"). Point `supabase_email` at a staff row that already HAS a password_hash (e.g. titiporn02468@gmail.com / golf@tcos.app) or this 404s ACCOUNT_NOT_CLAIMED."
+      },
+      "response": []
+    }
+  ]
+}

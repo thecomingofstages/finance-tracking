@@ -31,6 +31,7 @@ module.exports = {
   jwtAccessTtl: Number(process.env.JWT_ACCESS_TTL) || 900,
   jwtRefreshTtl: Number(process.env.JWT_REFRESH_TTL) || 604800,
   reauthTtl: Number(process.env.REAUTH_TTL) || 300,
+  resetTtl: Number(process.env.RESET_TTL) || 900,
   hmacSecret: process.env.HMAC_SECRET || "",
   serviceTokens: {
     enroll: process.env.SERVICE_TOKEN_ENROLL || "",

@@ -2,13 +2,14 @@ const { Model, DataTypes } = require("sequelize");
 const { TITLES, ROLES } = require("../utils/enums.util");
 
 class Staff extends Model {
-  static initModel(sequelize) {
+  static initModel(sequelize, schema) {
     Staff.init(
       {
         _id: {
           type: DataTypes.UUID,
           primaryKey: true,
-          defaultValue: sequelize.literal("uuid_generate_v7()"),
+          field: "_id",
+          defaultValue: sequelize.literal(`${schema}.uuid_generate_v7()`),
         },
         title: DataTypes.ENUM(...TITLES),
         first_name: { type: DataTypes.TEXT, allowNull: false },
@@ -25,6 +26,7 @@ class Staff extends Model {
       },
       {
         sequelize,
+        schema,
         modelName: "Staff",
         tableName: "staff",
         underscored: true,

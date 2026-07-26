@@ -1,13 +1,14 @@
 const { Model, DataTypes } = require("sequelize");
 
 class BankAccount extends Model {
-  static initModel(sequelize) {
+  static initModel(sequelize, schema) {
     BankAccount.init(
       {
         _id: {
           type: DataTypes.UUID,
           primaryKey: true,
-          defaultValue: sequelize.literal("uuid_generate_v7()"),
+          field: "_id",
+          defaultValue: sequelize.literal(`${schema}.uuid_generate_v7()`),
         },
         name: { type: DataTypes.TEXT, allowNull: false },
         // Globally UNIQUE in the shipped schema, not scoped per staff/provider — doc 02 §6
@@ -18,6 +19,7 @@ class BankAccount extends Model {
       },
       {
         sequelize,
+        schema,
         modelName: "BankAccount",
         tableName: "bankaccount",
         underscored: true,

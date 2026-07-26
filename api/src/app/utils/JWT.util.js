@@ -24,6 +24,14 @@ function signReauthToken({ sub }) {
   });
 }
 
+/** #6 — POST /auth/password/reset carries this back as `reset_token`. */
+function signResetToken({ sub }) {
+  return jwt.sign({ sub, typ: "reset" }, keys.jwtPrivateKey, {
+    algorithm: "RS256",
+    expiresIn: keys.resetTtl,
+  });
+}
+
 function verify(token) {
   return jwt.verify(token, keys.jwtPublicKey, { algorithms: ["RS256"] });
 }
@@ -37,6 +45,7 @@ module.exports = {
   signAccessToken,
   signRefreshToken,
   signReauthToken,
+  signResetToken,
   verify,
   decodeIgnoringExpiry,
 };

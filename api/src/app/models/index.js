@@ -1,4 +1,5 @@
 const sequelize = require("../database/Postgres.database");
+const { db } = require("../config/init");
 
 const modelClasses = [
   require("./Project.model"),
@@ -17,7 +18,7 @@ const modelClasses = [
 
 const registry = {};
 for (const ModelClass of modelClasses) {
-  ModelClass.initModel(sequelize);
+  ModelClass.initModel(sequelize, db.schema);
   registry[ModelClass.name] = ModelClass;
 }
 for (const ModelClass of modelClasses) {

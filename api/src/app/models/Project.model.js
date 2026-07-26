@@ -1,13 +1,14 @@
 const { Model, DataTypes } = require("sequelize");
 
 class Project extends Model {
-  static initModel(sequelize) {
+  static initModel(sequelize, schema) {
     Project.init(
       {
         _id: {
           type: DataTypes.UUID,
           primaryKey: true,
-          defaultValue: sequelize.literal("uuid_generate_v7()"),
+          field: "_id",
+          defaultValue: sequelize.literal(`${schema}.uuid_generate_v7()`),
         },
         name: { type: DataTypes.TEXT, allowNull: false },
         description: DataTypes.TEXT,
@@ -18,6 +19,7 @@ class Project extends Model {
       },
       {
         sequelize,
+        schema,
         modelName: "Project",
         tableName: "project",
         underscored: true,

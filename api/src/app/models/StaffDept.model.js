@@ -1,13 +1,14 @@
 const { Model, DataTypes } = require("sequelize");
 
 class StaffDept extends Model {
-  static initModel(sequelize) {
+  static initModel(sequelize, schema) {
     StaffDept.init(
       {
         _id: {
           type: DataTypes.UUID,
           primaryKey: true,
-          defaultValue: sequelize.literal("uuid_generate_v7()"),
+          field: "_id",
+          defaultValue: sequelize.literal(`${schema}.uuid_generate_v7()`),
         },
         staff_id: DataTypes.UUID,
         department_id: DataTypes.UUID,
@@ -17,6 +18,7 @@ class StaffDept extends Model {
       },
       {
         sequelize,
+        schema,
         modelName: "StaffDept",
         tableName: "staff_dept",
         underscored: true,
