@@ -21,8 +21,10 @@ async function main() {
   });
   console.log("rest/v1/ (schema introspection, needs secret key) ->", rest.status, rest.ok ? "OK" : "FAILED");
 
+  // `staff` lives in the `finance` schema, not `public` — Accept-Profile picks which schema
+  // PostgREST resolves an unqualified table name against (see supabase/config.toml).
   const staff = await fetch(`${url}/rest/v1/staff?select=_id&limit=1`, {
-    headers: { apikey: secretKey, Authorization: `Bearer ${secretKey}` },
+    headers: { apikey: secretKey, Authorization: `Bearer ${secretKey}`, "Accept-Profile": "finance" },
   });
   const body = await staff.json();
   if (staff.ok) {

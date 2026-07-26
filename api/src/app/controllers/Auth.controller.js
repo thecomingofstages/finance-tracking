@@ -10,8 +10,17 @@ const setRefreshCookie = (res, token) =>
     maxAge: 7 * 24 * 60 * 60 * 1000,
   });
 
+/** #57/#58 carry a Supabase Auth session token, not one of our own Bearer access tokens —
+ *  verifyJWT (which expects OUR RS256 tokens) is deliberately not mounted on these two routes,
+ *  so the raw header is read here instead. */
+function supabaseToken(req) {
+  const header = req.headers.authorization || "";
+  const [scheme, token] = header.split(" ");
+  return scheme === "Bearer" ? token : undefined;
+}
+
 exports.claim = asyncHandler(async (req, res) => {
-  const session = await Auth.claim(req.body);
+  const session = await Auth.claim({ supabaseAccessToken: supabaseToken(req), password: req.body?.password });
   setRefreshCookie(res, session.refresh_token);
   const { refresh_token, ...body } = session;
   return created(res, body);
@@ -25,7 +34,7 @@ exports.login = asyncHandler(async (req, res) => {
 });
 
 exports.loginViaSupabase = asyncHandler(async (req, res) => {
-  const session = await Auth.loginViaSupabase({ supabaseEmail: req.body?.email });
+  const session = await Auth.loginViaSupabase({ supabaseAccessToken: supabaseToken(req) });
   setRefreshCookie(res, session.refresh_token);
   const { refresh_token, ...body } = session;
   return ok(res, body);
@@ -37,7 +46,7 @@ exports.logout = asyncHandler(async (req, res) => {
 });
 
 exports.refresh = asyncHandler(async (req, res) => {
-  const session = await Auth.loginViaSupabase({ supabaseEmail: undefined });
+  const session = await Auth.refresh(req.cookies?.refresh_token);
   setRefreshCookie(res, session.refresh_token);
   const { refresh_token, ...body } = session;
   return ok(res, body);

@@ -1,5 +1,12 @@
 create extension if not exists "uuid-ossp";
 
+-- Everything below lives under finance, not public — keeps this app's tables out of the
+-- schema Supabase exposes/grants by default and out of the way of anything else sharing this
+-- project. search_path makes every unqualified name in this file resolve into finance first,
+-- so nothing else below needs to change.
+CREATE SCHEMA IF NOT EXISTS finance;
+SET search_path TO finance, public;
+
 create or replace function uuid_generate_v7()
 returns uuid
 as $$
@@ -271,3 +278,19 @@ $$ LANGUAGE plpgsql;
 CREATE TRIGGER trg_sync_reimbursement_latest_status
 AFTER INSERT ON reimbursement_updatestatus
 FOR EACH ROW EXECUTE FUNCTION sync_reimbursement_latest_status();
+
+-- Grants --
+-- A new schema isn't visible to PostgREST's roles the way `public` is by default (Supabase
+-- grants those automatically only on public/graphql_public) — only relevant if `finance` is
+-- ever added to supabase/config.toml's [api].schemas so it's exposed over the Data API/
+-- supabase-js. Our own backend connects as the `postgres` role via raw Sequelize and doesn't
+-- need any of this. No RLS policies here — that's a deliberate follow-up decision per table,
+-- not something to invent implicitly.
+
+GRANT USAGE ON SCHEMA finance TO anon, authenticated, service_role;
+GRANT ALL ON ALL TABLES IN SCHEMA finance TO anon, authenticated, service_role;
+GRANT ALL ON ALL SEQUENCES IN SCHEMA finance TO anon, authenticated, service_role;
+GRANT ALL ON ALL ROUTINES IN SCHEMA finance TO anon, authenticated, service_role;
+ALTER DEFAULT PRIVILEGES IN SCHEMA finance GRANT ALL ON TABLES TO anon, authenticated, service_role;
+ALTER DEFAULT PRIVILEGES IN SCHEMA finance GRANT ALL ON SEQUENCES TO anon, authenticated, service_role;
+ALTER DEFAULT PRIVILEGES IN SCHEMA finance GRANT ALL ON ROUTINES TO anon, authenticated, service_role;

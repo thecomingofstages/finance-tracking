@@ -1,7 +1,7 @@
 const { Model, DataTypes } = require("sequelize");
 
 class Payment extends Model {
-  static initModel(sequelize) {
+  static initModel(sequelize, schema) {
     Payment.init(
       {
         // Has a server-side default, but POST /payments must always pass its own _id
@@ -9,7 +9,8 @@ class Payment extends Model {
         _id: {
           type: DataTypes.UUID,
           primaryKey: true,
-          defaultValue: sequelize.literal("uuid_generate_v7()"),
+          field: "_id",
+          defaultValue: sequelize.literal(`${schema}.uuid_generate_v7()`),
         },
         user_id: DataTypes.UUID, // external, nullable, no FK
         source_id: { type: DataTypes.UUID, allowNull: false },
@@ -20,6 +21,7 @@ class Payment extends Model {
       },
       {
         sequelize,
+        schema,
         modelName: "Payment",
         tableName: "payment",
         underscored: true,

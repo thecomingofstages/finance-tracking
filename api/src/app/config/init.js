@@ -5,6 +5,8 @@ const db = require("./db.conf");
 const dbKeys = require("./db.keys");
 const r2 = require("./r2.conf");
 const r2Keys = require("./r2.keys");
+const email = require("./email.conf");
+const emailKeys = require("./email.keys");
 
 const schema = z.object({
   port: z.number().int().positive(),
@@ -24,4 +26,4 @@ function validate() {
   }
 }
 
-module.exports = { app, keys, db, dbKeys, r2, r2Keys, validate };
+module.exports = { app, keys, db, dbKeys, r2, r2Keys, email, emailKeys, validate };

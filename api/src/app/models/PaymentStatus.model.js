@@ -3,13 +3,14 @@ const { PAYMENT_STATUSES } = require("../utils/enums.util");
 
 /** Maps to payment_updatestatus — append-only log, never updated or deleted. */
 class PaymentStatus extends Model {
-  static initModel(sequelize) {
+  static initModel(sequelize, schema) {
     PaymentStatus.init(
       {
         _id: {
           type: DataTypes.UUID,
           primaryKey: true,
-          defaultValue: sequelize.literal("uuid_generate_v7()"),
+          field: "_id",
+          defaultValue: sequelize.literal(`${schema}.uuid_generate_v7()`),
         },
         payment_id: { type: DataTypes.UUID, allowNull: false },
         status: { type: DataTypes.ENUM(...PAYMENT_STATUSES), defaultValue: "waiting" },
@@ -18,6 +19,7 @@ class PaymentStatus extends Model {
       },
       {
         sequelize,
+        schema,
         modelName: "PaymentStatus",
         tableName: "payment_updatestatus",
         underscored: true,

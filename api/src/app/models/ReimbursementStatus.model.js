@@ -3,13 +3,14 @@ const { REIMBURSEMENT_STATUSES } = require("../utils/enums.util");
 
 /** Maps to reimbursement_updatestatus — append-only log, never updated or deleted. */
 class ReimbursementStatus extends Model {
-  static initModel(sequelize) {
+  static initModel(sequelize, schema) {
     ReimbursementStatus.init(
       {
         _id: {
           type: DataTypes.UUID,
           primaryKey: true,
-          defaultValue: sequelize.literal("uuid_generate_v7()"),
+          field: "_id",
+          defaultValue: sequelize.literal(`${schema}.uuid_generate_v7()`),
         },
         reimbursement_id: { type: DataTypes.UUID, allowNull: false },
         status: { type: DataTypes.ENUM(...REIMBURSEMENT_STATUSES), allowNull: false }, // no default — always explicit
@@ -17,6 +18,7 @@ class ReimbursementStatus extends Model {
       },
       {
         sequelize,
+        schema,
         modelName: "ReimbursementStatus",
         tableName: "reimbursement_updatestatus",
         underscored: true,

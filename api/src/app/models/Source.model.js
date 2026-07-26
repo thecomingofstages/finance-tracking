@@ -2,13 +2,14 @@ const { Model, DataTypes } = require("sequelize");
 const { SOURCE_TYPES } = require("../utils/enums.util");
 
 class Source extends Model {
-  static initModel(sequelize) {
+  static initModel(sequelize, schema) {
     Source.init(
       {
         _id: {
           type: DataTypes.UUID,
           primaryKey: true,
-          defaultValue: sequelize.literal("uuid_generate_v7()"),
+          field: "_id",
+          defaultValue: sequelize.literal(`${schema}.uuid_generate_v7()`),
         },
         type: { type: DataTypes.ENUM(...SOURCE_TYPES), allowNull: false },
         reference_id: DataTypes.UUID, // activity_id | store_id | null — no DB-level required-for-type check
@@ -21,6 +22,7 @@ class Source extends Model {
       },
       {
         sequelize,
+        schema,
         modelName: "Source",
         tableName: "source",
         underscored: true,
