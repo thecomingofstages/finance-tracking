@@ -25,8 +25,13 @@ function makeStaff(overrides = {}) {
     ...overrides,
   };
   staff.save = jest.fn().mockResolvedValue(staff);
+  staff.destroy = jest.fn().mockResolvedValue(staff);
+  staff.set = jest.fn(function set(patch) {
+    Object.assign(this, patch);
+    return this;
+  });
   staff.toSafeJSON = function toSafeJSON() {
-    const { password_hash, save, toSafeJSON: _drop, ...safe } = this;
+    const { password_hash, save, destroy, set, toSafeJSON: _drop, ...safe } = this;
     return safe;
   };
   return staff;

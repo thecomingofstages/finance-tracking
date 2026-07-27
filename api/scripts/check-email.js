@@ -21,10 +21,11 @@ async function main() {
   const from = process.env.EMAIL_FROM || "TCOS Finance <no-reply@tcos.app>";
   console.log("Host:", host, "Port:", port, "From:", from);
 
+  const secure = process.env.SMTP_SECURE !== undefined ? process.env.SMTP_SECURE === "true" : port === 465;
   const transporter = nodemailer.createTransport({
     host,
     port,
-    secure: port === 465,
+    secure,
     auth: { user, pass },
   });
 

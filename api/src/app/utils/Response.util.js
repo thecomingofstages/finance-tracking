@@ -20,6 +20,7 @@ function fail(res, apiError) {
     error: { code: apiError.code, message: apiError.message },
   };
   if (apiError.field) body.error.field = apiError.field;
+  if (apiError.details) body.error.details = apiError.details;
   return res.status(apiError.status).json(body);
 }
 

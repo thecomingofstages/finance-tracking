@@ -16,6 +16,14 @@ class ApiError extends Error {
     return new ApiError(400, "VALIDATION_ERROR", message, field);
   }
 
+  /** Same as validation(), plus a `details` array (e.g. per-row CSV import errors) — see
+   *  Response.util.js's fail(), which includes it in the envelope when present. */
+  static validationDetails(message, details) {
+    const err = new ApiError(400, "VALIDATION_ERROR", message);
+    err.details = details;
+    return err;
+  }
+
   static unauthorized(message = "Missing or invalid credentials.", code = "INVALID_CREDENTIALS") {
     return new ApiError(401, code, message);
   }

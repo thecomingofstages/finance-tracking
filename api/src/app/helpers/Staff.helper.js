@@ -1,6 +1,25 @@
+const { fn, col, where: sqlWhere, Op } = require("sequelize");
 const ApiError = require("../utils/ApiError.util");
 const R2 = require("../utils/R2.util");
+const CSV = require("../utils/CSV.util");
 const fixtures = require("../../mocks/fixtures");
+
+/**
+ * staff.email is plain TEXT UNIQUE, case-sensitive (doc 02 §6 gap #4) — lowercase both sides
+ * ourselves. `paranoid: false` is deliberate, not a bug: the UNIQUE constraint isn't scoped to
+ * `deleted_at IS NULL`, so a soft-deleted staff row still permanently occupies its email at the
+ * DB level (doc 02 §6 gap #10) — Sequelize's default paranoid findOne would miss that row,
+ * report the email as free, and then the real insert/update fails with a raw
+ * SequelizeUniqueConstraintError (500) instead of a clean 409. Checking with paranoid:false
+ * makes this match what the DB actually enforces. Shared by #10/#11/#12 below.
+ */
+function byEmail(email) {
+  const { Staff } = require("../models");
+  return Staff.findOne({
+    where: sqlWhere(fn("lower", col("email")), String(email).toLowerCase()),
+    paranoid: false,
+  });
+}
 
 /**
  * Grep this file for `TODO(mock)` to find every spot returning fixture data instead of
@@ -34,35 +53,119 @@ class StaffHelper {
     return fixtures.staff({ _id: staffId, ...patch });
   }
 
-  /** #10 — POST /admin/staff */
+  /** #10 — POST /admin/staff (doc 03 §5). Real: creates the identity only — no password_hash,
+   *  staff set their own via POST /auth/claim (#57). Role check (`role === 'admin'`) happens
+   *  in the route via requireRole("admin"), not here. */
   static async adminCreate(payload) {
     if (!payload.email || !payload.first_name || !payload.last_name || !payload.nickname) {
       throw ApiError.validation("first_name, last_name, nickname, and email are required.");
     }
-    // TODO(mock): check email uniqueness (409 DUPLICATE_EMAIL) and actually insert the row.
-    // password_hash intentionally not set here for real, not mocked — staff sets their own
-    // via POST /auth/claim (#57), per the plan.
-    return fixtures.staff({ ...payload, password_hash: undefined });
+    const { Staff } = require("../models");
+    const existing = await byEmail(payload.email);
+    if (existing) throw ApiError.conflict("A staff member with this email already exists.", "DUPLICATE_EMAIL");
+    const staff = await Staff.create({
+      title: payload.title || null,
+      first_name: payload.first_name,
+      last_name: payload.last_name,
+      nickname: payload.nickname,
+      email: payload.email,
+      phone: payload.phone || null,
+    });
+    return staff.toSafeJSON();
   }
 
-  /** #11 — POST /admin/staff/import */
-  static async adminImport(_fileBuffer) {
-    // TODO(mock): CSV.util.parse the real upload, validate every row before writing anything,
-    // all-or-nothing insert (doc 03 §5). Currently ignores the file entirely and returns two
-    // fixture rows regardless of what was uploaded.
-    return { created: 2, rows: [fixtures.staff(), fixtures.staff({ nickname: "Nok" })] };
+  /** #11 — POST /admin/staff/import (doc 03 §5). All-or-nothing: every row is validated (required
+   *  fields, email format, duplicate-in-file, duplicate-against-live-staff) before anything is
+   *  written; any failure returns the full per-row error list and inserts nothing. */
+  static async adminImport(fileBuffer) {
+    if (!fileBuffer) throw ApiError.validation("A CSV file is required.", "file");
+    const { rows, errors: parseErrors } = CSV.parse(fileBuffer);
+    if (!rows.length) throw ApiError.validation("CSV has no rows.", "file");
+
+    const rowErrors = parseErrors.map((e) => ({ row: e.row, message: e.message }));
+    const seenEmails = new Map(); // lowercase email -> 1-based row number
+
+    rows.forEach((row, i) => {
+      const rowNum = i + 1;
+      for (const field of ["first_name", "last_name", "nickname", "email"]) {
+        if (!row[field] || !String(row[field]).trim()) {
+          rowErrors.push({ row: rowNum, message: `${field} is required.` });
+        }
+      }
+      if (row.email) {
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(row.email)) {
+          rowErrors.push({ row: rowNum, message: `Invalid email: ${row.email}` });
+        } else {
+          const key = row.email.toLowerCase();
+          if (seenEmails.has(key)) {
+            rowErrors.push({ row: rowNum, message: `Duplicate email in file: ${row.email} (also row ${seenEmails.get(key)})` });
+          } else {
+            seenEmails.set(key, rowNum);
+          }
+        }
+      }
+    });
+
+    const { Staff, sequelize } = require("../models");
+
+    if (rowErrors.length === 0 && seenEmails.size) {
+      const existing = await Staff.findAll({
+        where: sqlWhere(fn("lower", col("email")), { [Op.in]: [...seenEmails.keys()] }),
+        attributes: ["email"],
+      });
+      for (const row of existing) {
+        rowErrors.push({ row: seenEmails.get(row.email.toLowerCase()), message: `Email already exists: ${row.email}` });
+      }
+    }
+
+    if (rowErrors.length) {
+      throw ApiError.validationDetails(`${rowErrors.length} row(s) failed validation — nothing was imported.`, rowErrors);
+    }
+
+    const created = await sequelize.transaction((t) =>
+      Staff.bulkCreate(
+        rows.map((row) => ({
+          title: row.title || null,
+          first_name: row.first_name.trim(),
+          last_name: row.last_name.trim(),
+          nickname: row.nickname.trim(),
+          email: row.email.trim(),
+          phone: row.phone || null,
+          line_id: row.line_id || null,
+        })),
+        { transaction: t, returning: true }
+      )
+    );
+
+    return { created: created.length, rows: created.map((s) => s.toSafeJSON()) };
   }
 
-  /** #12 — PATCH /admin/staff/:id */
+  /** #12 — PATCH /admin/staff/:id (doc 03 §5). `patch` is already zod-filtered to the allowed
+   *  fields (nickname/phone/line_id/title/first_name/last_name/email/role) by the time it gets
+   *  here — see Staff.schema.js's adminUpdate. */
   static async adminUpdate(staffId, patch) {
-    // TODO(mock): check email uniqueness if email is changing, $set on the real row.
-    return fixtures.staff({ _id: staffId, ...patch });
+    const { Staff } = require("../models");
+    const staff = await Staff.findByPk(staffId);
+    if (!staff) throw ApiError.notFound("Staff not found.");
+    if (patch.email) {
+      const existing = await byEmail(patch.email);
+      if (existing && existing._id !== staffId) {
+        throw ApiError.conflict("A staff member with this email already exists.", "DUPLICATE_EMAIL");
+      }
+    }
+    staff.set(patch);
+    await staff.save();
+    return staff.toSafeJSON();
   }
 
-  /** #13 — DELETE /admin/staff/:id */
-  static async adminDeactivate(_staffId) {
-    // TODO(mock): $set deleted_at on the real row. Soft-delete only — does not cascade to
-    // reimbursements/approvals already attributed to this staff member (intentional, not a gap).
+  /** #13 — DELETE /admin/staff/:id (doc 03 §5). Soft-delete only (paranoid:true sets
+   *  deleted_at) — does not cascade to reimbursements/approvals already attributed to this
+   *  staff member (intentional, not a gap). */
+  static async adminDeactivate(staffId) {
+    const { Staff } = require("../models");
+    const staff = await Staff.findByPk(staffId);
+    if (!staff) throw ApiError.notFound("Staff not found.");
+    await staff.destroy();
     return null;
   }
 
