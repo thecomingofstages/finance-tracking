@@ -490,12 +490,22 @@ paths:
     post:
       tags: [Staff]
       summary: Bulk provision from CSV (#11) — admin only
+      description: >
+        Required columns: first_name, last_name, nickname, email. Optional: title, phone,
+        line_id, department_id (a real department._id UUID, not a name — leave blank/omit for
+        no department, that's not an error). All-or-nothing: every row is validated — required
+        fields, email format, duplicate email within the file, duplicate against live staff,
+        unknown department_id — before anything is written; any failure returns the full
+        per-row error list in error.details and inserts nothing. staff_dept was originally
+        scoped as manual-only (docs/backend/03-api-spec.md §5); department_id added 2026-07-27
+        on request.
       requestBody:
         content:
           multipart/form-data:
             schema: { type: object, properties: { file: { type: string, format: binary } } }
       responses:
         "201": { description: All-or-nothing; per-row errors on failure }
+        "400": { $ref: "#/components/responses/ValidationError" }
 
   /admin/staff/{id}:
     patch:
@@ -547,15 +557,22 @@ paths:
     patch:
       tags: [Project]
       summary: Update project (#20)
+      description: total_income/total_expense are never client-writable — 400 if present in the body.
       parameters: [{ $ref: "#/components/parameters/idParam" }]
       responses:
         "200": { description: OK }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "404": { $ref: "#/components/responses/NotFound" }
     delete:
       tags: [Project]
       summary: Delete project — admin only (#21)
+      description: >
+        409 PROJECT_HAS_DEPENDENTS if any live tag, department, source, or reimbursement
+        (checked transitively via department) still references it.
       parameters: [{ $ref: "#/components/parameters/idParam" }]
       responses:
         "204": { description: No Content }
+        "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
 
   /projects/{id}/tags:
@@ -589,13 +606,21 @@ paths:
     patch:
       tags: [Project]
       summary: Update tag (#24)
+      description: 409 DUPLICATE_TAG on a rename colliding with another tag in the same project (application-level rule, no DB UNIQUE on name).
       parameters: [{ $ref: "#/components/parameters/idParam" }]
-      responses: { "200": { description: OK } }
+      responses:
+        "200": { description: OK }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
     delete:
       tags: [Project]
       summary: Delete tag (#25)
+      description: 409 TAG_HAS_DEPENDENTS if any live source or reimbursement still references it.
       parameters: [{ $ref: "#/components/parameters/idParam" }]
-      responses: { "204": { description: No Content }, "409": { $ref: "#/components/responses/Conflict" } }
+      responses:
+        "204": { description: No Content }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
 
   /projects/{id}/departments:
     get:
@@ -626,13 +651,21 @@ paths:
     patch:
       tags: [Project]
       summary: Update department (#28)
+      description: 409 DUPLICATE_DEPARTMENT on a rename colliding with another department in the same project.
       parameters: [{ $ref: "#/components/parameters/idParam" }]
-      responses: { "200": { description: OK } }
+      responses:
+        "200": { description: OK }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
     delete:
       tags: [Project]
       summary: Delete department (#29)
+      description: 409 DEPARTMENT_HAS_DEPENDENTS if it still has members (live staff_dept) or live reimbursements (checked transitively via staff_dept, so this still blocks even after every member has left).
       parameters: [{ $ref: "#/components/parameters/idParam" }]
-      responses: { "204": { description: No Content }, "409": { $ref: "#/components/responses/Conflict" } }
+      responses:
+        "204": { description: No Content }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
 
   /projects/{id}/staff:
     get:
@@ -651,6 +684,11 @@ paths:
     post:
       tags: [Sources]
       summary: Create a funding source (#34)
+      description: >
+        `reference_id` is required for type enroll/merch, and must be omitted for spon/other.
+        `actual_amount` mirrors `expect_amount` immediately for spon/other (no approval step);
+        stays 0 for enroll/merch until payments are approved. `tag_id`, if given, must belong to
+        the same project — 400 otherwise.
       parameters: [{ $ref: "#/components/parameters/idParam" }]
       requestBody:
         content:
@@ -664,19 +702,29 @@ paths:
                 tag_id: { type: string, format: uuid, nullable: true }
                 expect_amount: { type: integer }
                 reference_id: { type: string, format: uuid, nullable: true }
-      responses: { "201": { description: Created }, "400": { $ref: "#/components/responses/ValidationError" } }
+      responses:
+        "201": { description: Created }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "404": { $ref: "#/components/responses/NotFound" }
 
   /sources/{id}:
     patch:
       tags: [Sources]
       summary: Update source — never actual_amount/type/reference_id/project_id (#35)
       parameters: [{ $ref: "#/components/parameters/idParam" }]
-      responses: { "200": { description: OK } }
+      responses:
+        "200": { description: OK }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "404": { $ref: "#/components/responses/NotFound" }
     delete:
       tags: [Sources]
       summary: Delete source (#36)
+      description: 409 SOURCE_HAS_DEPENDENTS if any live payment still references it.
       parameters: [{ $ref: "#/components/parameters/idParam" }]
-      responses: { "204": { description: No Content }, "409": { $ref: "#/components/responses/Conflict" } }
+      responses:
+        "204": { description: No Content }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
 
   # ---------------------------------------------------------------- Payments (#37-40)
   /payments:

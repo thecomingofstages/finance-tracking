@@ -1,4 +1,6 @@
+const { Op } = require("sequelize");
 const ApiError = require("../utils/ApiError.util");
+const { db } = require("../config/init");
 const fixtures = require("../../mocks/fixtures");
 
 /**
@@ -13,11 +15,19 @@ class ProjectHelper {
     return { rows, meta: fixtures.pagination(rows.length) };
   }
 
-  /** #18 — POST /projects */
+  /** #18 — POST /projects (doc 03 §6). Real. Access control (finance/admin) still goes
+   *  through requireScope("isFinanceOrAdmin"), which is mock-permissive pending the
+   *  StaffDept-backed scope system — same gap as GET /auth/me's `scope`, not specific to
+   *  this endpoint. */
   static async create({ name, description, allocated_budget }) {
     if (!name) throw ApiError.validation("name is required.", "name");
-    // TODO(mock): insert the real row instead of echoing the input onto a fixture.
-    return fixtures.project({ name, description, allocated_budget, total_income: 0, total_expense: 0 });
+    const { Project } = require("../models");
+    const project = await Project.create({
+      name,
+      description: description ?? null,
+      allocated_budget: allocated_budget ?? 0,
+    });
+    return project.toJSON();
   }
 
   /** #19 — GET /projects/:id */
@@ -26,22 +36,50 @@ class ProjectHelper {
     return fixtures.project({ _id: projectId });
   }
 
-  /** #20 — PATCH /projects/:id */
+  /** #20 — PATCH /projects/:id (doc 03 §6). Real. Still no budget_changes audit table (doc 05
+   *  open question #12 unanswered) — this stays the one financially material edit with no
+   *  audit trail, real or mock. */
   static async update(projectId, patch) {
     // Real already: total_income/total_expense are never client-writable, checked for real.
     if ("total_income" in patch || "total_expense" in patch) {
       throw ApiError.validation("total_income/total_expense are never client-writable.");
     }
-    // TODO(mock): $set on the real row. Also write to a budget_changes audit table once
-    // doc 05 open question #12 is answered — this route is the one financially material
-    // edit with no audit trail right now, mock or not.
-    return fixtures.project({ _id: projectId, ...patch });
+    const { Project } = require("../models");
+    const project = await Project.findByPk(projectId);
+    if (!project) throw ApiError.notFound("Project not found.");
+    project.set(patch);
+    await project.save();
+    return project.toJSON();
   }
 
-  /** #21 — DELETE /projects/:id */
-  static async remove(_projectId) {
-    // TODO(mock): 409 CONFLICT if any live tag/department/source/reimbursement references
-    // it, else $set deleted_at. Currently always "succeeds".
+  /** #21 — DELETE /projects/:id (doc 03 §6). Real: 409 if any live tag/department/source/
+   *  reimbursement still references it — reimbursement is checked transitively (via
+   *  staff_dept -> department), the other three have a direct project_id FK. */
+  static async remove(projectId) {
+    const { Project, ProjectTag, Department, Source, sequelize } = require("../models");
+    const project = await Project.findByPk(projectId);
+    if (!project) throw ApiError.notFound("Project not found.");
+
+    const [tagCount, deptCount, sourceCount, liveReimbursement] = await Promise.all([
+      ProjectTag.count({ where: { project_id: projectId } }),
+      Department.count({ where: { project_id: projectId } }),
+      Source.count({ where: { project_id: projectId } }),
+      sequelize.query(
+        `SELECT 1 FROM ${db.schema}.reimbursement r
+         JOIN ${db.schema}.staff_dept sd ON sd._id = r.staff_dept_id
+         JOIN ${db.schema}.department d ON d._id = sd.department_id
+         WHERE d.project_id = :projectId AND r.deleted_at IS NULL
+         LIMIT 1`,
+        { replacements: { projectId }, type: sequelize.QueryTypes.SELECT }
+      ),
+    ]);
+    if (tagCount || deptCount || sourceCount || liveReimbursement.length) {
+      throw ApiError.conflict(
+        "Can't delete a project that still has tags, departments, sources, or reimbursements attached.",
+        "PROJECT_HAS_DEPENDENTS"
+      );
+    }
+    await project.destroy();
     return null;
   }
 
@@ -59,15 +97,37 @@ class ProjectHelper {
     return tags.map((t) => fixtures.tag({ project_id: projectId, ...t, total_income: 0, total_expense: 0 }));
   }
 
-  /** #24 — PATCH /tags/:id */
+  /** #24 — PATCH /tags/:id (doc 03 §6). Real. No UNIQUE constraint on project_tag.name at the
+   *  DB level — DUPLICATE_TAG is an application-level rule, not a DB one. */
   static async updateTag(tagId, patch) {
-    // TODO(mock): $set on the real row, 409 DUPLICATE_TAG on a colliding rename.
-    return fixtures.tag({ _id: tagId, ...patch });
+    const { ProjectTag } = require("../models");
+    const tag = await ProjectTag.findByPk(tagId);
+    if (!tag) throw ApiError.notFound("Tag not found.");
+    if (patch.name) {
+      const dup = await ProjectTag.findOne({
+        where: { project_id: tag.project_id, name: patch.name, _id: { [Op.ne]: tagId } },
+      });
+      if (dup) throw ApiError.conflict("A tag with this name already exists in this project.", "DUPLICATE_TAG");
+    }
+    tag.set(patch);
+    await tag.save();
+    return tag.toJSON();
   }
 
-  /** #25 — DELETE /tags/:id */
-  static async removeTag(_tagId) {
-    // TODO(mock): 409 CONFLICT if any live source/reimbursement references this tag.
+  /** #25 — DELETE /tags/:id (doc 03 §6). Real: 409 if any live source or reimbursement still
+   *  references it — both have a direct tag_id FK. */
+  static async removeTag(tagId) {
+    const { ProjectTag, Source, Reimbursement } = require("../models");
+    const tag = await ProjectTag.findByPk(tagId);
+    if (!tag) throw ApiError.notFound("Tag not found.");
+    const [sourceCount, reimbursementCount] = await Promise.all([
+      Source.count({ where: { tag_id: tagId } }),
+      Reimbursement.count({ where: { tag_id: tagId } }),
+    ]);
+    if (sourceCount || reimbursementCount) {
+      throw ApiError.conflict("Can't delete a tag that's still used by a source or reimbursement.", "TAG_HAS_DEPENDENTS");
+    }
+    await tag.destroy();
     return null;
   }
 
@@ -86,15 +146,45 @@ class ProjectHelper {
     return departments.map((d) => fixtures.department({ project_id: projectId, ...d, total_expense: 0 }));
   }
 
-  /** #28 — PATCH /departments/:id */
+  /** #28 — PATCH /departments/:id (doc 03 §6). Real. Same reasoning as updateTag — no DB-level
+   *  UNIQUE on department.name, DUPLICATE_DEPARTMENT is an application rule. */
   static async updateDepartment(deptId, patch) {
-    // TODO(mock): $set on the real row, 409 DUPLICATE_DEPARTMENT on a colliding rename.
-    return fixtures.department({ _id: deptId, ...patch });
+    const { Department } = require("../models");
+    const dept = await Department.findByPk(deptId);
+    if (!dept) throw ApiError.notFound("Department not found.");
+    if (patch.name) {
+      const dup = await Department.findOne({
+        where: { project_id: dept.project_id, name: patch.name, _id: { [Op.ne]: deptId } },
+      });
+      if (dup) throw ApiError.conflict("A department with this name already exists in this project.", "DUPLICATE_DEPARTMENT");
+    }
+    dept.set(patch);
+    await dept.save();
+    return dept.toJSON();
   }
 
-  /** #29 — DELETE /departments/:id */
-  static async removeDepartment(_deptId) {
-    // TODO(mock): 409 CONFLICT if anyone's still a member or it has live reimbursements.
+  /** #29 — DELETE /departments/:id (doc 03 §6). Real: 409 if anyone's still a member (live
+   *  staff_dept row) or it has live reimbursements (checked transitively via staff_dept,
+   *  since a reimbursement can outlive the membership that created it — see doc 02's
+   *  staff_dept_id orphaning note). */
+  static async removeDepartment(deptId) {
+    const { Department, StaffDept, sequelize } = require("../models");
+    const dept = await Department.findByPk(deptId);
+    if (!dept) throw ApiError.notFound("Department not found.");
+    const [memberCount, liveReimbursement] = await Promise.all([
+      StaffDept.count({ where: { department_id: deptId } }),
+      sequelize.query(
+        `SELECT 1 FROM ${db.schema}.reimbursement r
+         JOIN ${db.schema}.staff_dept sd ON sd._id = r.staff_dept_id
+         WHERE sd.department_id = :deptId AND r.deleted_at IS NULL
+         LIMIT 1`,
+        { replacements: { deptId }, type: sequelize.QueryTypes.SELECT }
+      ),
+    ]);
+    if (memberCount || liveReimbursement.length) {
+      throw ApiError.conflict("Can't delete a department that still has members or live reimbursements.", "DEPARTMENT_HAS_DEPENDENTS");
+    }
+    await dept.destroy();
     return null;
   }
 

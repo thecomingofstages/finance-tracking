@@ -21,6 +21,8 @@ function byEmail(email) {
   });
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /**
  * Grep this file for `TODO(mock)` to find every spot returning fixture data instead of
  * querying Postgres. Endpoint numbers (#N) match docs/backend/03-api-spec.md §2.
@@ -75,8 +77,11 @@ class StaffHelper {
   }
 
   /** #11 — POST /admin/staff/import (doc 03 §5). All-or-nothing: every row is validated (required
-   *  fields, email format, duplicate-in-file, duplicate-against-live-staff) before anything is
-   *  written; any failure returns the full per-row error list and inserts nothing. */
+   *  fields, email format, duplicate-in-file, duplicate-against-live-staff, department_id
+   *  existence) before anything is written; any failure returns the full per-row error list and
+   *  inserts nothing. `department_id` is optional per-row (staff_dept was originally scoped as
+   *  manual-only — see docs/backend/03-api-spec.md §5 — added here on request, 2026-07-27): a
+   *  blank/missing value just means the staff row is created without a department, not an error. */
   static async adminImport(fileBuffer) {
     if (!fileBuffer) throw ApiError.validation("A CSV file is required.", "file");
     const { rows, errors: parseErrors } = CSV.parse(fileBuffer);
@@ -104,9 +109,12 @@ class StaffHelper {
           }
         }
       }
+      if (row.department_id && row.department_id.trim() && !UUID_RE.test(row.department_id.trim())) {
+        rowErrors.push({ row: rowNum, message: `department_id is not a valid UUID: ${row.department_id}` });
+      }
     });
 
-    const { Staff, sequelize } = require("../models");
+    const { Staff, StaffDept, Department, sequelize } = require("../models");
 
     if (rowErrors.length === 0 && seenEmails.size) {
       const existing = await Staff.findAll({
@@ -118,12 +126,24 @@ class StaffHelper {
       }
     }
 
+    if (rowErrors.length === 0) {
+      const deptIds = [...new Set(rows.map((r) => r.department_id?.trim()).filter(Boolean))];
+      if (deptIds.length) {
+        const found = await Department.findAll({ where: { _id: { [Op.in]: deptIds } }, attributes: ["_id"] });
+        const foundIds = new Set(found.map((d) => d._id));
+        rows.forEach((row, i) => {
+          const id = row.department_id?.trim();
+          if (id && !foundIds.has(id)) rowErrors.push({ row: i + 1, message: `department_id not found: ${id}` });
+        });
+      }
+    }
+
     if (rowErrors.length) {
       throw ApiError.validationDetails(`${rowErrors.length} row(s) failed validation — nothing was imported.`, rowErrors);
     }
 
-    const created = await sequelize.transaction((t) =>
-      Staff.bulkCreate(
+    const created = await sequelize.transaction(async (t) => {
+      const staffRows = await Staff.bulkCreate(
         rows.map((row) => ({
           title: row.title || null,
           first_name: row.first_name.trim(),
@@ -134,8 +154,17 @@ class StaffHelper {
           line_id: row.line_id || null,
         })),
         { transaction: t, returning: true }
-      )
-    );
+      );
+
+      const staffDeptRows = rows
+        .map((row, i) => ({ department_id: row.department_id?.trim(), staff_id: staffRows[i]._id }))
+        .filter((r) => r.department_id);
+      if (staffDeptRows.length) {
+        await StaffDept.bulkCreate(staffDeptRows, { transaction: t });
+      }
+
+      return staffRows;
+    });
 
     return { created: created.length, rows: created.map((s) => s.toSafeJSON()) };
   }
