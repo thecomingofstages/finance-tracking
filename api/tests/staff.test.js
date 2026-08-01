@@ -2,6 +2,8 @@ const request = require("supertest");
 
 jest.mock("../src/app/models", () => ({
   Staff: { findOne: jest.fn(), findByPk: jest.fn(), findAll: jest.fn(), create: jest.fn(), bulkCreate: jest.fn() },
+  Department: { findAll: jest.fn() },
+  StaffDept: { bulkCreate: jest.fn() },
   sequelize: { transaction: jest.fn((cb) => cb({})) },
 }));
 jest.mock("../src/app/middleware/RateLimit.middleware", () => ({
@@ -9,7 +11,7 @@ jest.mock("../src/app/middleware/RateLimit.middleware", () => ({
   general: (req, res, next) => next(),
 }));
 
-const { Staff, sequelize } = require("../src/app/models");
+const { Staff, Department, StaffDept, sequelize } = require("../src/app/models");
 const { buildApp } = require("./helpers/app");
 const { makeStaff } = require("./helpers/factories");
 const JWT = require("../src/app/utils/JWT.util");
@@ -88,6 +90,69 @@ describe("POST /v1/admin/staff/import (#11)", () => {
     expect(res.body.data.rows).toHaveLength(2);
     expect(sequelize.transaction).toHaveBeenCalledTimes(1);
     expect(Staff.bulkCreate).toHaveBeenCalledTimes(1);
+    // no department_id column at all in this CSV — must not touch Department/StaffDept.
+    expect(Department.findAll).not.toHaveBeenCalled();
+    expect(StaffDept.bulkCreate).not.toHaveBeenCalled();
+  });
+
+  it("assigns staff_dept for rows with a department_id, and skips it for rows that leave it blank", async () => {
+    const deptId = "20000000-0000-0000-0000-000000000001";
+    const csv =
+      "first_name,last_name,nickname,email,department_id\n" +
+      `May,Sukjai,May,may@tcos.app,${deptId}\n` +
+      "Nok,Rungrueang,Nok,nok@tcos.app,\n"; // blank department_id — must still succeed
+
+    Staff.findAll.mockResolvedValueOnce([]);
+    Department.findAll.mockResolvedValueOnce([{ _id: deptId }]);
+    const createdMay = makeStaff({ _id: "staff-may", email: "may@tcos.app" });
+    const createdNok = makeStaff({ _id: "staff-nok", email: "nok@tcos.app" });
+    Staff.bulkCreate.mockResolvedValueOnce([createdMay, createdNok]);
+
+    const res = await request(app)
+      .post("/v1/admin/staff/import")
+      .set("Authorization", bearer("admin"))
+      .attach("file", Buffer.from(csv), "staff.csv");
+
+    expect(res.status).toBe(201);
+    expect(res.body.data.created).toBe(2);
+    expect(StaffDept.bulkCreate).toHaveBeenCalledTimes(1);
+    expect(StaffDept.bulkCreate).toHaveBeenCalledWith(
+      [{ department_id: deptId, staff_id: "staff-may" }],
+      expect.anything()
+    );
+  });
+
+  it("400s and inserts nothing when a row's department_id doesn't exist", async () => {
+    const csv =
+      "first_name,last_name,nickname,email,department_id\n" +
+      "May,Sukjai,May,may@tcos.app,00000000-0000-0000-0000-000000000099\n";
+
+    Staff.findAll.mockResolvedValueOnce([]);
+    Department.findAll.mockResolvedValueOnce([]); // that id doesn't exist
+
+    const res = await request(app)
+      .post("/v1/admin/staff/import")
+      .set("Authorization", bearer("admin"))
+      .attach("file", Buffer.from(csv), "staff.csv");
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.details).toEqual(
+      expect.arrayContaining([expect.objectContaining({ message: expect.stringContaining("department_id not found") })])
+    );
+    expect(Staff.bulkCreate).not.toHaveBeenCalled();
+  });
+
+  it("400s a malformed department_id (not a UUID) before ever querying the DB", async () => {
+    const csv = "first_name,last_name,nickname,email,department_id\n" + "May,Sukjai,May,may@tcos.app,not-a-uuid\n";
+
+    const res = await request(app)
+      .post("/v1/admin/staff/import")
+      .set("Authorization", bearer("admin"))
+      .attach("file", Buffer.from(csv), "staff.csv");
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.details[0].message).toMatch(/not a valid UUID/);
+    expect(Department.findAll).not.toHaveBeenCalled();
   });
 
   it("403s a non-admin caller before ever touching the file", async () => {

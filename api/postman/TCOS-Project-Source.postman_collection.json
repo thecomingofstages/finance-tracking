@@ -1,0 +1,211 @@
+{
+  "info": {
+    "_postman_id": "d8b3f2a4-6e91-4c7a-b3d5-tcos-projsrc-01",
+    "name": "TCOS Finance Tracking — Project & Source (chompoo)",
+    "description": "The 10 Project/Source endpoints from this split — POST /projects, PATCH/DELETE /projects/:id, PATCH/DELETE /tags/:id, PATCH/DELETE /departments/:id, POST /projects/:id/sources, PATCH/DELETE /sources/:id. See docs/backend/03-api-spec.md §6.\n\nSelf-contained: includes its own Login request. Run order 1→6 for a full create→update→delete cycle against a fresh project+source you create yourself. Requests 7-10 (tag/department update/delete) use the project's *already-seeded* tag/department (from supabase/seed.sql) since bulk-creating tags/departments (#23/#27) isn't part of this PR and is still mocked — see each request's own description for what that means for the delete ones.\n\n**Access control note**: these routes still go through requireScope(...), which stays mock-permissive (any authenticated user passes) pending the StaffDept-backed real scope system — same known gap as GET /auth/me's `scope`. Not specific to this collection.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:4000/v1", "type": "string" },
+    { "key": "admin_email", "value": "titiporn02468@gmail.com", "type": "string" },
+    { "key": "admin_password", "value": "Passw0rd!2026", "type": "string" },
+    { "key": "access_token", "value": "", "type": "string" },
+    { "key": "created_project_id", "value": "", "type": "string" },
+    { "key": "created_source_id", "value": "", "type": "string" },
+    { "key": "tag_id", "value": "50000000-0000-0000-0000-000000000001", "type": "string" },
+    { "key": "department_id", "value": "20000000-0000-0000-0000-000000000002", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "0. Setup notes (read me)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": { "raw": "{{base_url}}/health", "host": ["{{base_url}}"], "path": ["health"] },
+        "description": "Not one of the 10 endpoints — a harmless request to hang these notes on.\n\n1. Run \"1. Login\" first — sets `access_token`.\n2. Run 2→6 in order for a clean create→update→(create source)→update→delete→delete cycle on a project you create yourself — nothing pre-existing gets touched.\n3. `tag_id`/`department_id` default to real seeded rows (Sponsorship Booth tag, IT department) so 7-10 work immediately without any manual DB setup. Update (7, 9) is fully safe to run — it's a rename, reversible. Delete (8, 10) will correctly 409 against these specific seeded rows (the IT department has live members, the tag/department's project has other stuff attached) — that's real, expected behavior demonstrating the dependency check, not a bug. To see the delete *success* path, insert a throwaway tag/department directly via SQL first and point these variables at it."
+      },
+      "response": []
+    },
+    {
+      "name": "1. Login",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "if (pm.response.code === 200) {",
+              "  pm.collectionVariables.set('access_token', pm.response.json().data.access_token);",
+              "} else {",
+              "  pm.test('login failed — see response body', () => pm.expect.fail(pm.response.text()));",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{admin_email}}\",\n  \"password\": \"{{admin_password}}\"\n}" },
+        "url": { "raw": "{{base_url}}/auth/login", "host": ["{{base_url}}"], "path": ["auth", "login"] },
+        "description": "#1 — sets `access_token` for every request below."
+      },
+      "response": []
+    },
+    {
+      "name": "2. Create Project",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "if (pm.response.code === 201) {",
+              "  pm.collectionVariables.set('created_project_id', pm.response.json().data._id);",
+              "  pm.test('created', () => pm.expect(pm.response.json().data._id).to.be.a('string'));",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{access_token}}" }
+        ],
+        "body": { "mode": "raw", "raw": "{\n  \"name\": \"Postman Test Project\",\n  \"description\": \"created from the Postman collection\",\n  \"allocated_budget\": 100000\n}" },
+        "url": { "raw": "{{base_url}}/projects", "host": ["{{base_url}}"], "path": ["projects"] },
+        "description": "#18 — sets `created_project_id` for the rest of this collection."
+      },
+      "response": []
+    },
+    {
+      "name": "3. Update Project",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{access_token}}" }
+        ],
+        "body": { "mode": "raw", "raw": "{\n  \"name\": \"Postman Test Project (renamed)\",\n  \"allocated_budget\": 150000\n}" },
+        "url": { "raw": "{{base_url}}/projects/{{created_project_id}}", "host": ["{{base_url}}"], "path": ["projects", "{{created_project_id}}"] },
+        "description": "#20 — total_income/total_expense are rejected here even if you add them to the body, that's real and intentional, not a bug to work around."
+      },
+      "response": []
+    },
+    {
+      "name": "4. Create Source",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "if (pm.response.code === 201) {",
+              "  pm.collectionVariables.set('created_source_id', pm.response.json().data._id);",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{access_token}}" }
+        ],
+        "body": { "mode": "raw", "raw": "{\n  \"type\": \"spon\",\n  \"name\": \"Postman Test Sponsor\",\n  \"expect_amount\": 5000\n}" },
+        "url": {
+          "raw": "{{base_url}}/projects/{{created_project_id}}/sources",
+          "host": ["{{base_url}}"],
+          "path": ["projects", "{{created_project_id}}", "sources"]
+        },
+        "description": "#34 — `type: spon` needs no `reference_id` (only `enroll`/`merch` do) and `actual_amount` mirrors `expect_amount` immediately since there's no approval step for sponsor money. Sets `created_source_id`."
+      },
+      "response": []
+    },
+    {
+      "name": "5. Update Source",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{access_token}}" }
+        ],
+        "body": { "mode": "raw", "raw": "{\n  \"name\": \"Postman Test Sponsor (renamed)\",\n  \"expect_amount\": 6000\n}" },
+        "url": { "raw": "{{base_url}}/sources/{{created_source_id}}", "host": ["{{base_url}}"], "path": ["sources", "{{created_source_id}}"] },
+        "description": "#35 — actual_amount/type/reference_id/project_id are rejected here even if added to the body, that's real, not a bug."
+      },
+      "response": []
+    },
+    {
+      "name": "6. Delete Source",
+      "request": {
+        "method": "DELETE",
+        "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }],
+        "url": { "raw": "{{base_url}}/sources/{{created_source_id}}", "host": ["{{base_url}}"], "path": ["sources", "{{created_source_id}}"] },
+        "description": "#36 — 204. Run this before \"11. Delete Project\" — a project with a live source attached 409s."
+      },
+      "response": []
+    },
+    {
+      "name": "7. Update Tag (seeded)",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{access_token}}" }
+        ],
+        "body": { "mode": "raw", "raw": "{\n  \"name\": \"Sponsorship Booth (renamed via Postman)\"\n}" },
+        "url": { "raw": "{{base_url}}/tags/{{tag_id}}", "host": ["{{base_url}}"], "path": ["tags", "{{tag_id}}"] },
+        "description": "#24 — `tag_id` defaults to the real seeded \"Sponsorship Booth\" tag. Safe, reversible rename."
+      },
+      "response": []
+    },
+    {
+      "name": "8. Delete Tag (seeded — expect 409)",
+      "request": {
+        "method": "DELETE",
+        "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }],
+        "url": { "raw": "{{base_url}}/tags/{{tag_id}}", "host": ["{{base_url}}"], "path": ["tags", "{{tag_id}}"] },
+        "description": "#25 — the seeded tag is referenced by the seeded \"Booth Sponsor A\" source (and possibly a reimbursement), so this genuinely 409s TAG_HAS_DEPENDENTS against it. That's the real dependency check working, not broken — see \"6. Delete Source\" above for what a successful 204 looks like on a tag/source you actually control."
+      },
+      "response": []
+    },
+    {
+      "name": "9. Update Department (seeded)",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{access_token}}" }
+        ],
+        "body": { "mode": "raw", "raw": "{\n  \"name\": \"IT (renamed via Postman)\"\n}" },
+        "url": { "raw": "{{base_url}}/departments/{{department_id}}", "host": ["{{base_url}}"], "path": ["departments", "{{department_id}}"] },
+        "description": "#28 — `department_id` defaults to the real seeded IT department. Safe, reversible rename."
+      },
+      "response": []
+    },
+    {
+      "name": "10. Delete Department (seeded — expect 409)",
+      "request": {
+        "method": "DELETE",
+        "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }],
+        "url": { "raw": "{{base_url}}/departments/{{department_id}}", "host": ["{{base_url}}"], "path": ["departments", "{{department_id}}"] },
+        "description": "#29 — the seeded IT department has live members (mark, fah), so this genuinely 409s DEPARTMENT_HAS_DEPENDENTS. Real dependency check, not a bug — to see a 204, insert a throwaway department with no members via SQL and point `department_id` at it."
+      },
+      "response": []
+    },
+    {
+      "name": "11. Delete Project",
+      "request": {
+        "method": "DELETE",
+        "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }],
+        "url": { "raw": "{{base_url}}/projects/{{created_project_id}}", "host": ["{{base_url}}"], "path": ["projects", "{{created_project_id}}"] },
+        "description": "#21 — 204, assuming \"6. Delete Source\" already ran (this project never had any tags/departments attached, only the source). Try it against a project that still has something attached to see PROJECT_HAS_DEPENDENTS for real."
+      },
+      "response": []
+    }
+  ]
+}
