@@ -68,6 +68,22 @@ function requireScope(flag, _resolveTargetId) {
   };
 }
 
+/**
+ * Plain role check straight off the JWT payload (verifyJWT already put it on req.auth) — real
+ * regardless of MOCK_MODE, since it needs no DB/scope lookup. Stricter than
+ * requireScope("isGlobal") (which covers finance/owner/admin and is still mock-gated pending
+ * the StaffDept-backed scope system) — use this where the spec calls for exactly one role, e.g.
+ * doc 03 §5's `/admin/staff` routes ("Verify role === 'admin'. 403 otherwise.").
+ */
+function requireRole(role) {
+  return (req, res, next) => {
+    if (req.auth?.role !== role) {
+      return fail(res, ApiError.forbidden(`Requires the ${role} role.`));
+    }
+    return next();
+  };
+}
+
 /** X-Reauth-Token step-up check — doc 04 §9. Gates #40, #47, #60. */
 function requireReauth(req, res, next) {
   const token = req.headers["x-reauth-token"];
@@ -83,4 +99,4 @@ function requireReauth(req, res, next) {
   }
 }
 
-module.exports = { verifyJWT, resolveScope, requireScope, requireReauth };
+module.exports = { verifyJWT, resolveScope, requireScope, requireRole, requireReauth };

@@ -22,7 +22,7 @@ function getTransporter() {
   transporter = nodemailer.createTransport({
     host: email.host,
     port: email.port,
-    secure: email.port === 465,
+    secure: email.secure,
     auth: { user: emailKeys.user, pass: emailKeys.password },
   });
   return transporter;

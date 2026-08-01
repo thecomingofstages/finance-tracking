@@ -1,0 +1,130 @@
+{
+  "info": {
+    "_postman_id": "c7a2d9e1-4b6f-4a1e-9c2d-tcos-staff-0001",
+    "name": "TCOS Finance Tracking — Admin Staff (chompoo)",
+    "description": "The 4 admin staff endpoints — POST /admin/staff, POST /admin/staff/import, PATCH /admin/staff/:id, DELETE /admin/staff/:id. See docs/backend/03-api-spec.md §5.\n\nSelf-contained: includes its own Login request so this collection runs standalone without needing the Auth collection open too. Run order: 1. Login (admin) → 2 → 3 → 4 → 5, in that order — Create Staff sets `created_staff_id`, which Update/Delete then reuse.\n\nAll 4 routes require `requireRole(\"admin\")` — real, checked straight off the JWT (not the mock-gated scope system) — so the logged-in account must actually have role `admin`. The default `admin_email` below already does.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:4000/v1", "type": "string" },
+    { "key": "admin_email", "value": "titiporn02468@gmail.com", "type": "string" },
+    { "key": "admin_password", "value": "Passw0rd!2026", "type": "string" },
+    { "key": "access_token", "value": "", "type": "string" },
+    { "key": "created_staff_id", "value": "", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "0. Setup notes (read me)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": { "raw": "{{base_url}}/health", "host": ["{{base_url}}"], "path": ["health"] },
+        "description": "Not one of the 4 endpoints — a harmless request to hang these notes on.\n\n1. Run \"1. Login (admin)\" first — sets `access_token` automatically. `admin_email` must belong to a staff row with `role: admin` (the default already does).\n2. Run \"2. Create Staff\" — sets `created_staff_id` automatically from the response, which \"4. Update Staff\" and \"5. Delete Staff\" reuse. Run them in order.\n3. \"3. Import Staff (CSV)\" needs a real file attached to its Body tab (form-data, key `file`) — Postman can't embed one in a portable collection. See that request's description for a ready-to-save sample CSV.\n4. All 4 routes 403 unless the logged-in account's `role` is exactly `admin` — try logging in as `mark@tcos.app` / `Passw0rd!2026` (role: staff) instead to see the rejection."
+      },
+      "response": []
+    },
+    {
+      "name": "1. Login (admin)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "if (pm.response.code === 200) {",
+              "  const data = pm.response.json().data;",
+              "  pm.collectionVariables.set('access_token', data.access_token);",
+              "  pm.test('got an access token for an admin account', () => {",
+              "    pm.expect(data.access_token).to.be.a('string');",
+              "    pm.expect(data.staff.role).to.eql('admin');",
+              "  });",
+              "} else {",
+              "  pm.test('login failed — see response body', () => pm.expect.fail(pm.response.text()));",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{admin_email}}\",\n  \"password\": \"{{admin_password}}\"\n}" },
+        "url": { "raw": "{{base_url}}/auth/login", "host": ["{{base_url}}"], "path": ["auth", "login"] },
+        "description": "#1 — same real login endpoint as the Auth collection, included here so this collection is self-contained. Sets `access_token` for every request below."
+      },
+      "response": []
+    },
+    {
+      "name": "2. Create Staff",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "if (pm.response.code === 201) {",
+              "  pm.collectionVariables.set('created_staff_id', pm.response.json().data._id);",
+              "  pm.test('created with no password_hash', () => {",
+              "    pm.expect(pm.response.json().data._id).to.be.a('string');",
+              "    pm.expect(pm.response.json().data.password_hash).to.be.undefined;",
+              "  });",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{access_token}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"title\": \"นางสาว\",\n  \"first_name\": \"May\",\n  \"last_name\": \"Sukjai\",\n  \"nickname\": \"May\",\n  \"email\": \"may.postman@tcos.app\",\n  \"phone\": \"0899999999\"\n}"
+        },
+        "url": { "raw": "{{base_url}}/admin/staff", "host": ["{{base_url}}"], "path": ["admin", "staff"] },
+        "description": "#10 — provisions the identity only, no password — the staff member sets their own via POST /auth/claim. 409 DUPLICATE_EMAIL if that email already exists (case-insensitive); re-run with a different email if you've already run this once. Sets `created_staff_id` for the next two requests."
+      },
+      "response": []
+    },
+    {
+      "name": "3. Import Staff (CSV)",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }],
+        "body": {
+          "mode": "formdata",
+          "formdata": [{ "key": "file", "type": "file", "src": [] }]
+        },
+        "url": { "raw": "{{base_url}}/admin/staff/import", "host": ["{{base_url}}"], "path": ["admin", "staff", "import"] },
+        "description": "#11 — attach a real CSV to the `file` field in the Body tab (Postman can't embed a file in a portable collection JSON, you need to pick one locally). All-or-nothing: if ANY row fails validation (missing field, bad email, duplicate email in the file, or duplicate against a live staff row), the whole import is rejected with `error.details` listing every failing row, and nothing is inserted.\n\nUse `api/tests/fixtures/staff-import.csv` (already in the repo) for a clean import — 2 rows, `import1@tcos.app` / `import2@tcos.app`. Re-running the same file twice will 400 on the second run (duplicate emails against what you just inserted) — expected, not a bug; delete those two rows or edit the emails to try again."
+      },
+      "response": []
+    },
+    {
+      "name": "4. Update Staff",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{access_token}}" }
+        ],
+        "body": { "mode": "raw", "raw": "{\n  \"nickname\": \"MayUpdated\",\n  \"role\": \"finance\"\n}" },
+        "url": { "raw": "{{base_url}}/admin/staff/{{created_staff_id}}", "host": ["{{base_url}}"], "path": ["admin", "staff", "{{created_staff_id}}"] },
+        "description": "#12 — whitelist is nickname/phone/line_id/title/first_name/last_name/email/role (anything else is silently dropped by zod before this ever runs). 409 DUPLICATE_EMAIL if changing `email` to one already used by someone else. 404 if `created_staff_id` doesn't exist — run \"2. Create Staff\" first."
+      },
+      "response": []
+    },
+    {
+      "name": "5. Delete Staff",
+      "request": {
+        "method": "DELETE",
+        "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }],
+        "url": { "raw": "{{base_url}}/admin/staff/{{created_staff_id}}", "host": ["{{base_url}}"], "path": ["admin", "staff", "{{created_staff_id}}"] },
+        "description": "#13 — soft-delete (`deleted_at`), not a hard delete. Doesn't cascade — any reimbursements/approvals already attributed to this staff member are untouched. A deactivated staff member can no longer log in. 404 if `created_staff_id` doesn't exist."
+      },
+      "response": []
+    }
+  ]
+}
