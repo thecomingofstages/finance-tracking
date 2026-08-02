@@ -45,12 +45,12 @@ function LoginContent() {
   };
 
   return (
-    <div className="min-h-screen w-full flex items-center justify-center p-4 sm:p-6 bg-slate-50 text-slate-900 font-sans selection:bg-slate-200 selection:text-slate-900 relative">
+    <div className="min-h-screen w-full flex items-center justify-center p-4 sm:p-6 bg-slate-50/80 text-slate-900 font-sans selection:bg-blue-100 selection:text-blue-900 relative">
       {/* Soft Corporate Login Container */}
       <div className="w-full max-w-[410px] bg-white border border-slate-200/90 rounded-2xl p-7 sm:p-9 shadow-sm sm:shadow-md relative z-10 space-y-6">
         {/* Header / Brand Logo */}
         <div className="text-center space-y-3">
-          <div className="inline-flex items-center justify-center w-11 h-11 rounded-2xl bg-slate-900 text-white font-mono font-bold text-sm shadow-sm">
+          <div className="inline-flex items-center justify-center w-11 h-11 rounded-2xl bg-blue-900 text-white font-mono font-bold text-sm shadow-sm shadow-blue-900/20">
             TC
           </div>
           <div>
@@ -64,14 +64,14 @@ function LoginContent() {
         </div>
 
         {/* Tab Switcher */}
-        <div className="flex bg-slate-100/80 p-1 rounded-xl border border-slate-200/80">
+        <div className="flex bg-slate-100/90 p-1 rounded-xl border border-slate-200/80">
           <button
             type="button"
             onClick={() => setActiveTab("login")}
             className={`flex-1 py-1.5 text-xs font-medium rounded-lg transition-all duration-200 cursor-pointer ${
               activeTab === "login"
-                ? "bg-white text-slate-900 shadow-sm"
-                : "text-slate-500 hover:text-slate-800"
+                ? "bg-blue-900 text-white shadow-sm"
+                : "text-slate-500 hover:text-slate-900"
             }`}
           >
             เข้าสู่ระบบ
@@ -81,8 +81,8 @@ function LoginContent() {
             onClick={() => setActiveTab("claim")}
             className={`flex-1 py-1.5 text-xs font-medium rounded-lg transition-all duration-200 cursor-pointer ${
               activeTab === "claim"
-                ? "bg-white text-slate-900 shadow-sm"
-                : "text-slate-500 hover:text-slate-800"
+                ? "bg-blue-900 text-white shadow-sm"
+                : "text-slate-500 hover:text-slate-900"
             }`}
           >
             ตั้งรหัสแรกเข้า
@@ -92,8 +92,8 @@ function LoginContent() {
             onClick={() => setActiveTab("forgot")}
             className={`flex-1 py-1.5 text-xs font-medium rounded-lg transition-all duration-200 cursor-pointer ${
               activeTab === "forgot"
-                ? "bg-white text-slate-900 shadow-sm"
-                : "text-slate-500 hover:text-slate-800"
+                ? "bg-blue-900 text-white shadow-sm"
+                : "text-slate-500 hover:text-slate-900"
             }`}
           >
             ลืมรหัสผ่าน

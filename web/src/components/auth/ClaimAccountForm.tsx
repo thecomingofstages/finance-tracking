@@ -146,7 +146,7 @@ export const ClaimAccountForm: React.FC<ClaimAccountFormProps> = ({
               onChange={(e) => setSessionToken(e.target.value)}
               placeholder="วางโทเคนที่ได้รับจากลิงก์เชิญ..."
               disabled={isLoading}
-              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-slate-900 placeholder:text-slate-400 text-sm focus:outline-none focus:border-slate-900 focus:ring-1 focus:ring-slate-900 transition-all disabled:opacity-50"
+              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-slate-900 placeholder:text-slate-400 text-sm focus:outline-none focus:border-blue-800 focus:ring-1 focus:ring-blue-800 transition-all disabled:opacity-50"
             />
           </div>
         )}
@@ -165,7 +165,7 @@ export const ClaimAccountForm: React.FC<ClaimAccountFormProps> = ({
             onChange={(e) => setPassword(e.target.value)}
             placeholder="อย่างน้อย 8 ตัวอักษร"
             disabled={isLoading}
-            className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-slate-900 placeholder:text-slate-400 text-sm focus:outline-none focus:border-slate-900 focus:ring-1 focus:ring-slate-900 transition-all disabled:opacity-50"
+            className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-slate-900 placeholder:text-slate-400 text-sm focus:outline-none focus:border-blue-800 focus:ring-1 focus:ring-blue-800 transition-all disabled:opacity-50"
           />
         </div>
 
@@ -183,14 +183,14 @@ export const ClaimAccountForm: React.FC<ClaimAccountFormProps> = ({
             onChange={(e) => setConfirmPassword(e.target.value)}
             placeholder="กรอกรหัสผ่านใหม่อีกครั้ง"
             disabled={isLoading}
-            className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-slate-900 placeholder:text-slate-400 text-sm focus:outline-none focus:border-slate-900 focus:ring-1 focus:ring-slate-900 transition-all disabled:opacity-50"
+            className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-slate-900 placeholder:text-slate-400 text-sm focus:outline-none focus:border-blue-800 focus:ring-1 focus:ring-blue-800 transition-all disabled:opacity-50"
           />
         </div>
 
         <button
           type="submit"
           disabled={isLoading}
-          className="w-full py-2.5 px-4 rounded-xl text-white font-medium bg-slate-900 hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-900 transition-all duration-200 shadow-sm text-sm disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer mt-2"
+          className="w-full py-2.5 px-4 rounded-xl text-white font-medium bg-blue-900 hover:bg-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-800 transition-all duration-200 shadow-sm shadow-blue-900/20 text-sm disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer mt-2"
         >
           {isLoading ? (
             <>
@@ -226,7 +226,7 @@ export const ClaimAccountForm: React.FC<ClaimAccountFormProps> = ({
             <button
               type="button"
               onClick={onBackToLogin}
-              className="text-xs text-slate-500 hover:text-slate-900 transition-colors focus:outline-none"
+              className="text-xs text-blue-800 hover:text-blue-900 font-medium transition-colors focus:outline-none"
             >
               ← กลับไปยังหน้าเข้าสู่ระบบ
             </button>

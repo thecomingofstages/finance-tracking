@@ -215,7 +215,7 @@ export const SignatureUploadModal: React.FC<SignatureUploadModalProps> = ({
               onChange={(e) => setPassword(e.target.value)}
               placeholder="กรอกรหัสผ่านของคุณ"
               disabled={isLoading}
-              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-slate-900 placeholder:text-slate-400 text-sm focus:outline-none focus:border-slate-900 focus:ring-1 focus:ring-slate-900 transition-all disabled:opacity-50"
+              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-slate-900 placeholder:text-slate-400 text-sm focus:outline-none focus:border-blue-800 focus:ring-1 focus:ring-blue-800 transition-all disabled:opacity-50"
             />
           </div>
 
@@ -232,7 +232,7 @@ export const SignatureUploadModal: React.FC<SignatureUploadModalProps> = ({
             <button
               type="submit"
               disabled={isLoading}
-              className="px-4 py-2 rounded-xl text-xs font-medium text-white bg-slate-900 hover:bg-slate-800 transition-all shadow-sm disabled:opacity-50 flex items-center gap-2 cursor-pointer"
+              className="px-4 py-2 rounded-xl text-xs font-medium text-white bg-blue-900 hover:bg-blue-800 transition-all shadow-sm shadow-blue-900/20 disabled:opacity-50 flex items-center gap-2 cursor-pointer"
             >
               {isLoading ? (
                 <>
