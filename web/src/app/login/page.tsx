@@ -67,42 +67,17 @@ function LoginContent() {
           </div>
         </div>
 
-        {/* Tab Switcher */}
-        <div className="flex bg-slate-100/90 p-1 rounded-xl border border-slate-200/80">
-          <button
-            type="button"
-            onClick={() => setActiveTab("login")}
-            className={`flex-1 py-1.5 text-xs font-medium rounded-lg transition-all duration-200 cursor-pointer ${
-              activeTab === "login"
-                ? "bg-blue-900 text-white shadow-sm"
-                : "text-slate-500 hover:text-slate-900"
-            }`}
-          >
-            เข้าสู่ระบบ
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab("claim")}
-            className={`flex-1 py-1.5 text-xs font-medium rounded-lg transition-all duration-200 cursor-pointer ${
-              activeTab === "claim"
-                ? "bg-blue-900 text-white shadow-sm"
-                : "text-slate-500 hover:text-slate-900"
-            }`}
-          >
-            ตั้งรหัสแรกเข้า
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab("forgot")}
-            className={`flex-1 py-1.5 text-xs font-medium rounded-lg transition-all duration-200 cursor-pointer ${
-              activeTab === "forgot"
-                ? "bg-blue-900 text-white shadow-sm"
-                : "text-slate-500 hover:text-slate-900"
-            }`}
-          >
-            ลืมรหัสผ่าน
-          </button>
-        </div>
+        {/* Mode Title Indicator */}
+        {activeTab === "claim" && (
+          <div className="bg-blue-50 border border-blue-200/80 rounded-xl p-3 text-center text-xs text-blue-900 font-medium">
+            ตั้งรหัสผ่านสำหรับเข้าใช้งานครั้งแรก (Create Password)
+          </div>
+        )}
+        {activeTab === "forgot" && (
+          <div className="bg-blue-50 border border-blue-200/80 rounded-xl p-3 text-center text-xs text-blue-900 font-medium">
+            รีเซ็ตรหัสผ่าน (Reset Password)
+          </div>
+        )}
 
         {/* Form Body based on activeTab */}
         <div className="mt-1">
