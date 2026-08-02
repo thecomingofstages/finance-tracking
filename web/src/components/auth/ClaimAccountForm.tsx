@@ -82,7 +82,7 @@ export const ClaimAccountForm: React.FC<ClaimAccountFormProps> = ({
 
   return (
     <div className="w-full">
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit} noValidate className="space-y-4">
         <div>
           <h3 className="text-sm font-semibold text-slate-100 mb-0.5">
             ตั้งรหัสผ่านเข้าใช้งานครั้งแรก

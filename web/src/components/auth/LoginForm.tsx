@@ -24,8 +24,13 @@ export const LoginForm: React.FC<LoginFormProps> = ({
     e.preventDefault();
     setError(null);
 
-    if (!email.trim() || !password) {
-      setError("กรุณากรอกอีเมลและรหัสผ่าน");
+    if (!email.trim()) {
+      setError("กรุณากรอกอีเมลสำหรับเข้าสู่ระบบ");
+      return;
+    }
+
+    if (!password) {
+      setError("กรุณากรอกรหัสผ่าน");
       return;
     }
 
@@ -47,7 +52,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
 
   return (
     <div className="w-full">
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit} noValidate className="space-y-4">
         {error && (
           <div className="p-3 rounded-xl text-xs bg-red-950/40 text-red-400 border border-red-900/50 flex items-center gap-2">
             <svg

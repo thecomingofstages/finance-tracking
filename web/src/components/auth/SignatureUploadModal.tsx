@@ -123,7 +123,7 @@ export const SignatureUploadModal: React.FC<SignatureUploadModalProps> = ({
         </div>
 
         {/* Body */}
-        <form onSubmit={handleSubmit} className="p-5 space-y-4">
+        <form onSubmit={handleSubmit} noValidate className="p-5 space-y-4">
           {error && (
             <div className="p-3 rounded-xl text-xs bg-red-950/40 text-red-400 border border-red-900/50 flex items-center gap-2">
               <svg
