@@ -51,11 +51,13 @@ function LoginContent() {
         {/* Header / Brand Logo */}
         <div className="text-center space-y-3">
           <div className="inline-flex items-center justify-center">
-            <img
-              src="/logo-the-coming-of-stages.png"
-              alt="The Coming of Stages Logo"
-              className="h-14 w-auto object-contain max-w-[180px]"
-            />
+            <div className="bg-blue-950 px-5 py-3 rounded-2xl shadow-sm shadow-blue-950/20 flex items-center justify-center border border-blue-900/50">
+              <img
+                src="/logo-the-coming-of-stages.png"
+                alt="The Coming of Stages Logo"
+                className="h-10 w-auto object-contain"
+              />
+            </div>
           </div>
           <div>
             <h1 className="text-lg font-bold tracking-tight text-slate-900">
