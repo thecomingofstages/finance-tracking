@@ -142,6 +142,7 @@ function LoginContent() {
       <SignatureUploadModal
         isOpen={showSignatureModal}
         onClose={handleSignatureClose}
+        onSuccess={handleSignatureSuccess}
       />
     </div>
   );
