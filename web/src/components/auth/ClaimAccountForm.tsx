@@ -84,16 +84,16 @@ export const ClaimAccountForm: React.FC<ClaimAccountFormProps> = ({
     <div className="w-full">
       <form onSubmit={handleSubmit} noValidate className="space-y-4">
         <div>
-          <h3 className="text-sm font-semibold text-slate-100 mb-0.5">
+          <h3 className="text-sm font-semibold text-slate-900 mb-0.5">
             ตั้งรหัสผ่านเข้าใช้งานครั้งแรก
           </h3>
-          <p className="text-xs text-slate-400 mb-3">
+          <p className="text-xs text-slate-500 mb-3">
             กำหนดรหัสผ่านใหม่สำหรับเข้าใช้งานระบบ หากพบปัญหา กรุณาติดต่อฝ่าย IT
           </p>
         </div>
 
         {error && (
-          <div className="p-3 rounded-xl text-xs bg-red-950/40 text-red-400 border border-red-900/50 flex items-center gap-2">
+          <div className="p-3 rounded-xl text-xs bg-red-50 text-red-700 border border-red-200/80 flex items-center gap-2">
             <svg
               className="w-4 h-4 flex-shrink-0"
               fill="none"
@@ -112,7 +112,7 @@ export const ClaimAccountForm: React.FC<ClaimAccountFormProps> = ({
         )}
 
         {successMessage && (
-          <div className="p-3 rounded-xl text-xs bg-emerald-950/40 text-emerald-400 border border-emerald-900/50 flex items-center gap-2">
+          <div className="p-3 rounded-xl text-xs bg-emerald-50 text-emerald-700 border border-emerald-200/80 flex items-center gap-2">
             <svg
               className="w-4 h-4 flex-shrink-0"
               fill="none"
@@ -135,19 +135,18 @@ export const ClaimAccountForm: React.FC<ClaimAccountFormProps> = ({
           <div>
             <label
               htmlFor="sessionToken"
-              className="block text-xs font-medium text-slate-300 mb-1"
+              className="block text-xs font-medium text-slate-700 mb-1"
             >
               โทเคนยืนยันตัวตน (Session Token)
             </label>
             <input
               id="sessionToken"
               type="text"
-              required
               value={sessionToken}
               onChange={(e) => setSessionToken(e.target.value)}
               placeholder="วางโทเคนที่ได้รับจากลิงก์เชิญ..."
               disabled={isLoading}
-              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-800 bg-slate-950/60 text-slate-100 placeholder-slate-500 text-sm focus:outline-none focus:border-slate-500 focus:ring-1 focus:ring-slate-500 transition-all disabled:opacity-50"
+              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-slate-900 placeholder:text-slate-400 text-sm focus:outline-none focus:border-slate-900 focus:ring-1 focus:ring-slate-900 transition-all disabled:opacity-50"
             />
           </div>
         )}
@@ -155,50 +154,48 @@ export const ClaimAccountForm: React.FC<ClaimAccountFormProps> = ({
         <div>
           <label
             htmlFor="claim-password"
-            className="block text-xs font-medium text-slate-300 mb-1"
+            className="block text-xs font-medium text-slate-700 mb-1"
           >
             รหัสผ่านใหม่
           </label>
           <input
             id="claim-password"
             type="password"
-            required
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="อย่างน้อย 8 ตัวอักษร"
             disabled={isLoading}
-            className="w-full px-3.5 py-2.5 rounded-xl border border-slate-800 bg-slate-950/60 text-slate-100 placeholder-slate-500 text-sm focus:outline-none focus:border-slate-500 focus:ring-1 focus:ring-slate-500 transition-all disabled:opacity-50"
+            className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-slate-900 placeholder:text-slate-400 text-sm focus:outline-none focus:border-slate-900 focus:ring-1 focus:ring-slate-900 transition-all disabled:opacity-50"
           />
         </div>
 
         <div>
           <label
             htmlFor="confirmPassword"
-            className="block text-xs font-medium text-slate-300 mb-1"
+            className="block text-xs font-medium text-slate-700 mb-1"
           >
             ยืนยันรหัสผ่านใหม่
           </label>
           <input
             id="confirmPassword"
             type="password"
-            required
             value={confirmPassword}
             onChange={(e) => setConfirmPassword(e.target.value)}
             placeholder="กรอกรหัสผ่านใหม่อีกครั้ง"
             disabled={isLoading}
-            className="w-full px-3.5 py-2.5 rounded-xl border border-slate-800 bg-slate-950/60 text-slate-100 placeholder-slate-500 text-sm focus:outline-none focus:border-slate-500 focus:ring-1 focus:ring-slate-500 transition-all disabled:opacity-50"
+            className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-slate-900 placeholder:text-slate-400 text-sm focus:outline-none focus:border-slate-900 focus:ring-1 focus:ring-slate-900 transition-all disabled:opacity-50"
           />
         </div>
 
         <button
           type="submit"
           disabled={isLoading}
-          className="w-full py-2.5 px-4 rounded-xl text-slate-950 font-medium bg-slate-100 hover:bg-white focus:outline-none focus:ring-2 focus:ring-slate-400 transition-all duration-200 shadow text-sm disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer mt-2"
+          className="w-full py-2.5 px-4 rounded-xl text-white font-medium bg-slate-900 hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-900 transition-all duration-200 shadow-sm text-sm disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer mt-2"
         >
           {isLoading ? (
             <>
               <svg
-                className="animate-spin h-4 w-4 text-slate-900"
+                className="animate-spin h-4 w-4 text-white"
                 xmlns="http://www.w3.org/2000/svg"
                 fill="none"
                 viewBox="0 0 24 24"
@@ -225,11 +222,11 @@ export const ClaimAccountForm: React.FC<ClaimAccountFormProps> = ({
         </button>
 
         {onBackToLogin && (
-          <div className="pt-3 text-center border-t border-slate-800/80 mt-4">
+          <div className="pt-3 text-center border-t border-slate-100 mt-4">
             <button
               type="button"
               onClick={onBackToLogin}
-              className="text-xs text-slate-400 hover:text-slate-200 transition-colors focus:outline-none"
+              className="text-xs text-slate-500 hover:text-slate-900 transition-colors focus:outline-none"
             >
               ← กลับไปยังหน้าเข้าสู่ระบบ
             </button>

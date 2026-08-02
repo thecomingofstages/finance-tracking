@@ -99,17 +99,17 @@ export const SignatureUploadModal: React.FC<SignatureUploadModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-      <div className="w-full max-w-md bg-slate-900 rounded-2xl shadow-2xl border border-slate-800 overflow-hidden text-slate-100">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+      <div className="w-full max-w-md bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden text-slate-900">
         {/* Header */}
-        <div className="px-5 py-4 border-b border-slate-800 flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-slate-100">
+        <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-slate-900">
             อัปโหลดลายเซ็นดิจิทัล
           </h3>
           <button
             type="button"
             onClick={onClose}
-            className="text-slate-400 hover:text-slate-200 p-1 rounded-lg focus:outline-none"
+            className="text-slate-400 hover:text-slate-600 p-1 rounded-lg focus:outline-none"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path
@@ -125,7 +125,7 @@ export const SignatureUploadModal: React.FC<SignatureUploadModalProps> = ({
         {/* Body */}
         <form onSubmit={handleSubmit} noValidate className="p-5 space-y-4">
           {error && (
-            <div className="p-3 rounded-xl text-xs bg-red-950/40 text-red-400 border border-red-900/50 flex items-center gap-2">
+            <div className="p-3 rounded-xl text-xs bg-red-50 text-red-700 border border-red-200/80 flex items-center gap-2">
               <svg
                 className="w-4 h-4 flex-shrink-0"
                 fill="none"
@@ -145,23 +145,23 @@ export const SignatureUploadModal: React.FC<SignatureUploadModalProps> = ({
 
           {/* Signature File Input */}
           <div>
-            <label className="block text-xs font-medium text-slate-300 mb-1">
+            <label className="block text-xs font-medium text-slate-700 mb-1">
               ไฟล์รูปภาพลายเซ็น (PNG หรือ JPEG)
             </label>
 
             {previewUrl ? (
-              <div className="relative border border-slate-800 rounded-xl p-4 flex flex-col items-center justify-center bg-slate-950/60">
+              <div className="relative border border-slate-200 rounded-xl p-4 flex flex-col items-center justify-center bg-slate-50">
                 {/* Image Preview */}
                 <img
                   src={previewUrl}
                   alt="Signature preview"
-                  className="max-h-28 object-contain mb-2 filter invert brightness-200"
+                  className="max-h-28 object-contain mb-2"
                 />
-                <p className="text-xs text-slate-400 truncate max-w-xs">{file?.name}</p>
+                <p className="text-xs text-slate-500 truncate max-w-xs">{file?.name}</p>
                 <button
                   type="button"
                   onClick={handleRemoveFile}
-                  className="mt-2 text-xs text-slate-400 hover:text-white transition-colors"
+                  className="mt-2 text-xs text-slate-600 hover:text-slate-900 transition-colors"
                 >
                   เปลี่ยนรูปภาพ
                 </button>
@@ -169,10 +169,10 @@ export const SignatureUploadModal: React.FC<SignatureUploadModalProps> = ({
             ) : (
               <div
                 onClick={() => fileInputRef.current?.click()}
-                className="border-2 border-dashed border-slate-800 hover:border-slate-600 rounded-xl p-6 flex flex-col items-center justify-center cursor-pointer bg-slate-950/50 transition-colors"
+                className="border-2 border-dashed border-slate-300 hover:border-slate-400 rounded-xl p-6 flex flex-col items-center justify-center cursor-pointer bg-slate-50/70 transition-colors"
               >
                 <svg
-                  className="w-8 h-8 text-slate-500 mb-2"
+                  className="w-8 h-8 text-slate-400 mb-2"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -184,10 +184,10 @@ export const SignatureUploadModal: React.FC<SignatureUploadModalProps> = ({
                     d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
                   />
                 </svg>
-                <p className="text-xs font-medium text-slate-300">
+                <p className="text-xs font-medium text-slate-700">
                   คลิกเพื่อเลือกไฟล์ หรือลากไฟล์มาวางที่นี่
                 </p>
-                <p className="text-[11px] text-slate-500 mt-1">รองรับเฉพาะ PNG และ JPEG</p>
+                <p className="text-[11px] text-slate-400 mt-1">รองรับเฉพาะ PNG และ JPEG</p>
               </div>
             )}
 
@@ -204,41 +204,40 @@ export const SignatureUploadModal: React.FC<SignatureUploadModalProps> = ({
           <div>
             <label
               htmlFor="verify-password"
-              className="block text-xs font-medium text-slate-300 mb-1"
+              className="block text-xs font-medium text-slate-700 mb-1"
             >
               ยืนยันรหัสผ่านเพื่อดำเนินการ
             </label>
             <input
               id="verify-password"
               type="password"
-              required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="กรอกรหัสผ่านของคุณ"
               disabled={isLoading}
-              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-800 bg-slate-950/60 text-slate-100 placeholder-slate-500 text-sm focus:outline-none focus:border-slate-500 focus:ring-1 focus:ring-slate-500 transition-all disabled:opacity-50"
+              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-slate-900 placeholder:text-slate-400 text-sm focus:outline-none focus:border-slate-900 focus:ring-1 focus:ring-slate-900 transition-all disabled:opacity-50"
             />
           </div>
 
           {/* Footer Actions */}
-          <div className="pt-3 flex items-center justify-end gap-3 border-t border-slate-800">
+          <div className="pt-3 flex items-center justify-end gap-3 border-t border-slate-100">
             <button
               type="button"
               onClick={onClose}
               disabled={isLoading}
-              className="px-3.5 py-2 text-xs font-medium text-slate-400 hover:text-slate-200 transition-colors disabled:opacity-50"
+              className="px-3.5 py-2 text-xs font-medium text-slate-500 hover:text-slate-800 transition-colors disabled:opacity-50"
             >
               ไว้ทีหลัง
             </button>
             <button
               type="submit"
               disabled={isLoading}
-              className="px-4 py-2 rounded-xl text-xs font-medium text-slate-950 bg-slate-100 hover:bg-white transition-all shadow disabled:opacity-50 flex items-center gap-2 cursor-pointer"
+              className="px-4 py-2 rounded-xl text-xs font-medium text-white bg-slate-900 hover:bg-slate-800 transition-all shadow-sm disabled:opacity-50 flex items-center gap-2 cursor-pointer"
             >
               {isLoading ? (
                 <>
                   <svg
-                    className="animate-spin h-3.5 w-3.5 text-slate-900"
+                    className="animate-spin h-3.5 w-3.5 text-white"
                     xmlns="http://www.w3.org/2000/svg"
                     fill="none"
                     viewBox="0 0 24 24"
