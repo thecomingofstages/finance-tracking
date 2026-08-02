@@ -253,18 +253,6 @@ export const LoginForm: React.FC<LoginFormProps> = ({
             "เข้าสู่ระบบ"
           )}
         </button>
-
-        {onSelectClaim && (
-          <div className="pt-3 text-center border-t border-slate-100 mt-4">
-            <button
-              type="button"
-              onClick={onSelectClaim}
-              className="text-xs text-blue-800 hover:text-blue-900 font-medium transition-colors focus:outline-none"
-            >
-              ตั้งรหัสผ่านสำหรับเข้าใช้งานครั้งแรก
-            </button>
-          </div>
-        )}
       </form>
     </div>
   );
