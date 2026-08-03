@@ -217,8 +217,8 @@ For human collaborators, see the per-folder READMEs and `docs/`.
 
 - `web/.dev.vars` (Worker-style) and `api/.env` (dotenv) are two different
   env files. Do not put web secrets in `api/.env` or vice versa.
-- The api/ uses `SUPABASE_SERVICE_ROLE_KEY` server-side (bypasses RLS).
-  The web/ uses `SUPABASE_ANON_KEY` in the browser. Never swap them.
+- The api/ uses `SUPABASE_SECRET_KEY` server-side (bypasses RLS).
+  The web/ uses `SUPABASE_PUBLISHABLE_KEY` in the browser. Never swap them.
 - `api/src/mocks/fixtures.js` is large and is the only place fixture data
   should live. Helpers should never hardcode their own mock data — they
   import from fixtures.

@@ -20,27 +20,22 @@ npm install                    # picks up the pinned `supabase` CLI
 npm run supabase:start         # first run pulls ~1.5 GB of images
 ```
 
-When it finishes, the CLI prints a JSON block with the local API URL and keys. Copy them into the two env files so the apps can connect:
+When it finishes, the CLI prints a JSON block with the local API URL and keys. Copy them into the api env file so the Express backend can connect (the web app talks to the api, not to Supabase directly, so it needs no Supabase keys):
 
 ```bash
-# web/ — Next.js worker (loaded by wrangler dev/preview)
-cp web/.dev.vars.example web/.dev.vars
-$EDITOR web/.dev.vars
-
-# api/ — Express backend
 cp api/.env.example api/.env
 $EDITOR api/.env
 ```
 
-Fill in the three keys from the `supabase start` output:
+Fill in the values from the `supabase start` output. Note that recent Supabase CLI versions (≥ ~2.0) renamed the old `ANON_KEY` / `SERVICE_ROLE_KEY` labels to `PUBLISHABLE_KEY` / `SECRET_KEY` — the underlying JWT roles (`anon`, `service_role`) are unchanged, only the labels moved:
 
-| Variable                    | Where to find it           | Used by                |
-| --------------------------- | -------------------------- | ---------------------- |
-| `SUPABASE_URL`              | `API_URL`                  | web, api               |
-| `SUPABASE_ANON_KEY`         | `ANON_KEY`                 | web (browser)          |
-| `SUPABASE_SERVICE_ROLE_KEY` | `SERVICE_ROLE_KEY`         | api (server-side only) |
+| Variable                       | `supabase start` label  | Used by                |
+| ------------------------------ | ----------------------- | ---------------------- |
+| `SUPABASE_URL`                 | `API_URL`               | api (server-side only) |
+| `SUPABASE_PUBLISHABLE_KEY`     | `PUBLISHABLE_KEY`       | api (if needed)        |
+| `SUPABASE_SECRET_KEY`          | `SECRET_KEY`            | api (server-side only) |
 
-> The `service_role` key bypasses Row Level Security. Never put it in client-side code or commit it. The two `.example` files are committed; the real `.env` / `.dev.vars` are gitignored.
+> The `secret` key bypasses Row Level Security. Never put it in client-side code or commit it. `.env.example` is committed; the real `.env` is gitignored.
 
 ## Day-to-day commands
 

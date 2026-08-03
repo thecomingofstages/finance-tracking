@@ -36,7 +36,7 @@ finance-tracking/
     │   │   │   ├── app.keys.js     — JWT_PRIVATE_KEY, JWT_PUBLIC_KEY, HMAC_SECRET,
     │   │   │   │                      SERVICE_TOKEN (enroll/merch ingress)
     │   │   │   ├── db.conf.js      — host, port, database, pool { min, max, idle }
-    │   │   │   ├── db.keys.js      — DB_PASSWORD, SUPABASE_SERVICE_ROLE_KEY
+    │   │   │   ├── db.keys.js      — DB_PASSWORD, SUPABASE_SECRET_KEY
     │   │   │   ├── r2.conf.js      — R2_ENDPOINT, bucket names, region="auto"
     │   │   │   ├── r2.keys.js      — R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY
     │   │   │   └── init.js    — loads dotenv, validates with zod, throws onmissing
