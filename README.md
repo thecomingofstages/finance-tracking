@@ -42,14 +42,14 @@ and `SERVICE_ROLE_KEY`. Copy them into the env files:
 
 ```bash
 cp api/.env.example api/.env
-$EDITOR api/.env          # fill in SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY
+$EDITOR api/.env          # fill in SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, SUPABASE_SECRET_KEY
 
 cp web/.dev.vars.example web/.dev.vars
 $EDITOR web/.dev.vars     # fill in the same three keys
 ```
 
-The `SUPABASE_SERVICE_ROLE_KEY` is server-side only (bypasses RLS). The
-`SUPABASE_ANON_KEY` is what the browser sees. **Never swap them** — see
+The `SUPABASE_SECRET_KEY` is server-side only (bypasses RLS). The
+`SUPABASE_PUBLISHABLE_KEY` is what the browser sees. **Never swap them** — see
 `AGENTS.md` for the full gotcha list.
 
 ### Running the apps
