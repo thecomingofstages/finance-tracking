@@ -83,7 +83,7 @@ export const ForgotPasswordForm: React.FC<ForgotPasswordFormProps> = ({
         )}
 
         {successMessage && (
-          <div className="p-3 rounded-xl text-xs bg-emerald-50 text-emerald-700 border border-emerald-200/80 flex items-center gap-2">
+          <div className="p-3 rounded-xl text-xs bg-emerald-50 text-blue-900 border border-emerald-200/80 flex items-center gap-2">
             <svg
               className="w-4 h-4 flex-shrink-0"
               fill="none"
@@ -158,7 +158,7 @@ export const ForgotPasswordForm: React.FC<ForgotPasswordFormProps> = ({
             <button
               type="button"
               onClick={onBackToLogin}
-              className="text-xs text-blue-800 hover:text-blue-900 font-medium transition-colors focus:outline-none"
+              className="text-xs text-slate-800 hover:text-blue-600 font-medium transition-colors focus:outline-none"
             >
               ← กลับไปยังหน้าเข้าสู่ระบบ
             </button>

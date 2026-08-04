@@ -160,7 +160,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
               <button
                 type="button"
                 onClick={onSelectForgot}
-                className="text-xs text-blue-800 hover:text-blue-900 font-medium transition-colors focus:outline-none"
+                className="text-xs text-slate-800 hover:text-blue-600 font-medium transition-colors focus:outline-none"
               >
                 ลืมรหัสผ่าน?
               </button>

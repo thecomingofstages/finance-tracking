@@ -45,7 +45,7 @@ function LoginContent() {
   };
 
   return (
-    <div className="min-h-screen w-full flex items-center justify-center p-4 sm:p-6 bg-slate-50/80 text-slate-900 font-sans selection:bg-blue-100 selection:text-blue-900 relative">
+    <div className="min-h-screen w-full flex items-center justify-center p-4 sm:p-6 bg-slate-50/80 text-slate-900 font-sans selection:bg-blue-50 selection:text-blue-900 relative">
       {/* Soft Corporate Login Container */}
       <div className="w-full max-w-[410px] bg-white border border-slate-200/90 rounded-2xl p-7 sm:p-9 shadow-sm sm:shadow-md relative z-10 space-y-6">
         {/* Header / Brand Logo */}
@@ -69,12 +69,12 @@ function LoginContent() {
 
         {/* Mode Title Indicator */}
         {activeTab === "claim" && (
-          <div className="bg-blue-50 border border-blue-200/80 rounded-xl p-3 text-center text-xs text-blue-900 font-medium">
+          <div className="bg-zinc-50 border border-slate-200/80 rounded-xl p-3 text-center text-xs text-blue-900 font-medium">
             ตั้งรหัสผ่านสำหรับเข้าใช้งานครั้งแรก (Create Password)
           </div>
         )}
         {activeTab === "forgot" && (
-          <div className="bg-blue-50 border border-blue-200/80 rounded-xl p-3 text-center text-xs text-blue-900 font-medium">
+          <div className="bg-zinc-50 border border-slate-200/80 rounded-xl p-3 text-center text-xs text-blue-900 font-medium">
             รีเซ็ตรหัสผ่าน (Reset Password)
           </div>
         )}
@@ -130,7 +130,7 @@ export default function LoginPage() {
         <div className="min-h-screen w-full flex items-center justify-center bg-slate-950 text-white">
           <div className="flex items-center gap-3">
             <svg
-              className="animate-spin h-6 w-6 text-blue-500"
+              className="animate-spin h-6 w-6 text-rose-600"
               xmlns="http://www.w3.org/2000/svg"
               fill="none"
               viewBox="0 0 24 24"
