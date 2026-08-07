@@ -9,12 +9,11 @@ const ApiError = require("../utils/ApiError.util");
  * and #47 POST /reimbursements/:id/status (every transition) in Reimbursement.helper.js.
  * Nothing in this file is mocked — this is real business logic, not fixture data.
  *
- * TODO(mock): each edge's `requires` (isHead / isFinance / isOwner / isRequester /
- * isHeadOrAutoVerify) is data, not enforcement — nothing currently checks it against the
- * caller's scope. `assertTransition()` only validates the state machine shape (is this edge
- * real at all), not who's allowed to walk it. Reimbursement.routes.js's #47 route has no
- * requireScope() call today, only requireReauth (step-up) — the per-transition role check
- * described here needs wiring into changeStatus() once scope stops being a fixture.
+ * assertAuthorized() below checks each edge's `requires` flag for real, against booleans
+ * Reimbursement.helper.js resolves with direct StaffDept queries (isHead/isFinance are
+ * project/department-scoped and need a real join — see doc 04 §2/§3 — so they can't be read
+ * off the still-mock-permissive req.scope the way other routes' access control currently is;
+ * this file and its caller are real regardless of that broader gap).
  */
 const TRANSITIONS = {
   "waiting->head_approve": { requires: "isHeadOrAutoVerify" },
@@ -41,6 +40,17 @@ class ApprovalHelper {
    *  described in doc 04 §4: two status rows inserted in one transaction at creation time. */
   static shouldAutoVerifyHead({ isRequesterHeadOfDepartment }) {
     return Boolean(isRequesterHeadOfDepartment);
+  }
+
+  /** Throws 403 if the caller doesn't hold the flag `edge.requires` demands. `isHeadOrAutoVerify`
+   *  covers both the auto-verify path (checked separately at creation, doc 04 §4) and a
+   *  different head manually approving — either way it collapses to "is the caller head of
+   *  this department," so it's treated the same as `isHead` here. */
+  static assertAuthorized(edge, { isHead, isFinance, isOwner, isRequester }) {
+    const flags = { isHead, isHeadOrAutoVerify: isHead, isFinance, isOwner, isRequester };
+    if (!flags[edge.requires]) {
+      throw ApiError.forbidden(`This action requires ${edge.requires}.`);
+    }
   }
 }
 

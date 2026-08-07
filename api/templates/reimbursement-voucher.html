@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<title>ใบสำคัญจ่าย</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  @page { size: A4; margin: 15mm 18mm; }
+  html, body {
+    font-family: 'Sarabun', 'Noto Sans Thai', 'Tahoma', sans-serif;
+    font-size: 12.5px;
+    color: #222;
+    line-height: 1.5;
+  }
+  .accent { color: #1a7a99; }
+
+  .doc-title { font-size: 19px; font-weight: 700; margin-bottom: 2px; }
+  .doc-title .sub { display: block; font-size: 12px; font-weight: 400; color: #555; }
+
+  .top {
+    display: flex;
+    justify-content: space-between;
+    margin: 16px 0 14px;
+  }
+  .top .company-info div, .top .doc-meta div { margin-bottom: 3px; }
+  .top .doc-meta { text-align: right; }
+  .top .doc-meta .label { color: #555; }
+
+  .section-label { font-weight: 600; margin: 10px 0 4px; }
+  .party-block div { margin-bottom: 2px; }
+
+  .kv-row { display: flex; margin-bottom: 2px; }
+  .kv-row .label { width: 160px; color: #333; }
+
+  table.items {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 14px 0 4px;
+  }
+  table.items th {
+    background: #1a7a99;
+    color: #fff;
+    font-weight: 600;
+    padding: 6px 8px;
+    font-size: 11.5px;
+    text-align: center;
+  }
+  table.items td {
+    border-bottom: 1px solid #ddd;
+    padding: 7px 8px;
+    font-size: 12px;
+  }
+  table.items td:first-child { text-align: center; }
+  table.items td:last-child { text-align: right; }
+
+  .totals-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-top: 10px;
+  }
+  .baht-text { font-style: italic; padding-top: 6px; }
+  .totals { width: 260px; }
+  .totals .line { display: flex; justify-content: space-between; padding: 3px 0; }
+  .totals .line.net { font-weight: 700; border-top: 1px solid #999; margin-top: 4px; padding-top: 6px; }
+
+  .payment-details {
+    margin-top: 26px;
+    padding-top: 12px;
+    border-top: 1px solid #ccc;
+  }
+  .payment-details .methods { display: flex; gap: 18px; margin: 8px 0; flex-wrap: wrap; }
+  .payment-details .methods .opt { display: flex; align-items: center; gap: 5px; }
+  .box { display: inline-block; width: 12px; height: 12px; border: 1px solid #333; text-align: center; line-height: 11px; font-size: 10px; }
+  .box.checked { background: #1a7a99; color: #fff; border-color: #1a7a99; }
+  .fillline { display: inline-block; border-bottom: 1px solid #999; min-width: 140px; padding: 0 4px; }
+
+  .signatures {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+    margin-top: 40px;
+    text-align: center;
+    font-size: 12px;
+  }
+  .signatures .sig-line { border-bottom: 1px solid #333; height: 30px; margin-bottom: 6px; }
+  .signatures .role { color: #555; margin-top: 4px; }
+</style>
+</head>
+<body>
+
+  <div class="doc-title accent">
+    ใบเตรียมจ่าย/ใบสำคัญจ่าย
+    <span class="sub">Schedule Payment/Payment Slip</span>
+  </div>
+
+  <div class="top">
+    <div class="company-info">
+      <div>บริษัท เดอะ คัมมิ่ง ออฟ สเตจ จำกัด (สำนักงานใหญ่)</div>
+      <div>160/2 ถนนประดิพัทธ์ แขวงสามเสนใน เขตพญาไท กรุงเทพมหานคร 10400</div>
+      <div>เลขประจำตัวผู้เสียภาษี 0105568014255</div>
+    </div>
+    <div class="doc-meta">
+      <div><span class="label">เลขที่/Document no.:</span> {trackingId}</div>
+      <div><span class="label">วันที่/Date:</span> {docDate}</div>
+      <div><span class="label">ชำระก่อน/Payment Due:</span> {docDate}</div>
+      <br>
+      <div><span class="label">ผู้จัดทำ/Preparer:</span> {preparerName}</div>
+    </div>
+  </div>
+
+  <div class="section-label accent">ผู้จำหน่าย/Vendor:</div>
+  <div class="party-block">
+    <div>{name}</div>
+    <div>-</div>
+  </div>
+
+  <div class="kv-row"><span class="label accent">ผู้ขอซื้อ/Requestor:</span> {name}</div>
+  <div class="kv-row"><span class="label accent">ผู้อนุมัติ/Approver:</span> {approverName}</div>
+  <div class="kv-row"><span class="label accent">สาเหตุขอซื้อ/Reason(s):</span> {objective}</div>
+
+  <table class="items">
+    <thead>
+      <tr>
+        <th>ลำดับ<br/>No.</th>
+        <th>เลขที่เอกสาร<br/>Document No.</th>
+        <th>เอกสารวันที่<br/>Document Date</th>
+        <th>ชื่อโปรเจค<br/>Project Name</th>
+        <th>ยอดชำระ<br/>Total</th>
+      </tr>
+    </thead>
+    <tbody>
+      {items_rows}
+    </tbody>
+  </table>
+
+  <div class="totals-row">
+    <div class="baht-text">({total_amount_text})</div>
+    <div class="totals">
+      <div class="line"><span>จำนวนรวม {item_count} รายการ</span><span></span></div>
+      <div class="line"><span>รวมเป็นเงิน</span><span>{total_amount} บาท</span></div>
+      <div class="line"><span>หักภาษี ณ ที่จ่าย</span><span>{withheld_amount} บาท</span></div>
+      <div class="line net"><span>ยอดจ่าย</span><span>{net_amount} บาท</span></div>
+    </div>
+  </div>
+
+  <div class="payment-details">
+    <div class="section-label accent">รายละเอียดการชำระเงิน/Payment details</div>
+    <div class="methods">
+      <span>ช่องทางการชำระเงิน/Payment method:</span>
+      <span class="opt"><span class="box {cashBox}">{cashMark}</span> เงินสด/Cash</span>
+      <span class="opt"><span class="box"></span> เช็ค/Cheque</span>
+      <span class="opt"><span class="box {transferBox}">{transferMark}</span> โอนเงิน/Transfer</span>
+      <span class="opt"><span class="box"></span> บัตรเครดิต/Credit card</span>
+    </div>
+    <div class="kv-row"><span class="label">ธนาคาร/Bank:</span> <span class="fillline">{bankName}</span></div>
+    <div class="kv-row"><span class="label">เลขที่/No.:</span> <span class="fillline">{bankAccountNumber}</span></div>
+    <div class="kv-row"><span class="label">วันที่ชำระ/Payment date:</span> <span class="fillline">{paymentDate}</span></div>
+    <div class="kv-row"><span class="label">ยอดชำระ/Amount paid:</span> <span class="fillline">{net_amount}</span></div>
+    <div class="kv-row"><span class="label">หัก ณ ที่จ่าย/Amount withheld:</span> <span class="fillline">{withheld_amount}</span></div>
+  </div>
+
+  <div class="signatures">
+    <div>
+      <div class="sig-line"></div>
+      <div>( {name} )</div>
+      <div class="role">ผู้รับเงิน/Received by</div>
+      <div class="role">วันที่/Date:</div>
+    </div>
+    <div>
+      <div class="sig-line"></div>
+      <div>( {preparerName} )</div>
+      <div class="role">ผู้จัดทำ/Prepared by</div>
+      <div class="role">วันที่/Date:</div>
+    </div>
+    <div>
+      <div class="sig-line"></div>
+      <div>( {approverName} )</div>
+      <div class="role">ผู้อนุมัติ/Approved by</div>
+      <div class="role">วันที่/Date:</div>
+    </div>
+  </div>
+
+</body>
+</html>
