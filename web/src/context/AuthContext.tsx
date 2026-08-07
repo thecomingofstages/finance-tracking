@@ -46,6 +46,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
+  const MOCK_DEV_USER: AuthUser = {
+    _id: "018f6a2e-dev-admin",
+    nickname: "Golf (Dev Admin)",
+    first_name: "สมชาย",
+    last_name: "ใจดี",
+    email: "golf@tcos.app",
+    role: "admin",
+    signature_image: "https://mock.tcos.app/signatures/golf.png",
+    scope: {
+      memberships: [
+        {
+          project_id: "p1",
+          project_name: "The Coming of Stages 3",
+          department_id: "d1",
+          department_name: "ฝ่ายการเงิน",
+          is_head: true,
+          is_finance: true,
+          is_manager: true,
+        },
+      ],
+      head_of: ["p1"],
+      finance_of: ["p1"],
+      manager_of: ["p1"],
+    },
+  };
+
   const refreshUser = async () => {
     try {
       const { data, error } = await getMeApi();
@@ -54,10 +80,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } else if (data && !("success" in data) && (data as any)._id) {
         setUser(data as AuthUser);
       } else {
-        setUser(null);
+        // Fallback to Mock Dev User ONLY in development mode so preview works without logging in
+        if (process.env.NODE_ENV === "development") {
+          setUser(MOCK_DEV_USER);
+        } else {
+          setUser(null);
+        }
       }
     } catch {
-      setUser(null);
+      if (process.env.NODE_ENV === "development") {
+        setUser(MOCK_DEV_USER);
+      } else {
+        setUser(null);
+      }
     } finally {
       setIsLoading(false);
     }

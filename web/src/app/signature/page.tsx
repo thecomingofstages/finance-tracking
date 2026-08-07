@@ -77,7 +77,7 @@ export default function SignaturePage() {
   };
 
   return (
-    <div className="min-h-screen w-full flex items-center justify-center p-4 sm:p-6 bg-slate-50/80 text-slate-900 font-sans selection:bg-blue-100 selection:text-blue-900">
+    <div className="min-h-screen w-full flex items-center justify-center p-4 sm:p-6 bg-slate-50/80 text-slate-900 font-sans selection:bg-blue-50 selection:text-blue-900">
       <div className="w-full max-w-md bg-white border border-slate-200/90 rounded-2xl p-7 sm:p-9 shadow-sm sm:shadow-md space-y-6">
         {/* Header Logo & Title */}
         <div className="text-center space-y-2">
@@ -108,7 +108,7 @@ export default function SignaturePage() {
           )}
 
           {success && (
-            <div className="p-3 rounded-xl text-xs bg-emerald-50 text-emerald-700 border border-emerald-200/80 flex items-center gap-2">
+            <div className="p-3 rounded-xl text-xs bg-emerald-50 text-blue-900 border border-emerald-200/80 flex items-center gap-2">
               <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
               </svg>
@@ -128,7 +128,7 @@ export default function SignaturePage() {
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
-                  className="mt-2 text-xs text-blue-800 hover:text-blue-900 font-medium transition-colors"
+                  className="mt-2 text-xs text-slate-800 hover:text-blue-600 font-medium transition-colors"
                 >
                   เปลี่ยนรูปภาพลายเซ็น
                 </button>
