@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import { useAuth } from "@/context/AuthContext";
+import { startGoogleLogin } from "@/lib/auth/supabaseOAuth";
 
 export interface LoginFormProps {
   onSelectClaim?: () => void;
@@ -56,8 +57,9 @@ export const LoginForm: React.FC<LoginFormProps> = ({
   };
 
   const handleGoogleLogin = () => {
-    // Redirect to Supabase OAuth Google Sign-in flow
-    window.location.href = `${process.env.NEXT_PUBLIC_SUPABASE_URL || "http://127.0.0.1:54321"}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(window.location.origin + "/login")}`;
+    // Leaves the app entirely — Supabase → Google → back to /auth/callback, which does the
+    // actual sign-in against POST /auth/login/supabase. Nothing after this line runs.
+    startGoogleLogin();
   };
 
   return (

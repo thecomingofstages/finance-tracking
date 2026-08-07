@@ -16,10 +16,13 @@ function LoginContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const tokenParam = searchParams.get("session_token") || searchParams.get("token") || "";
+  /** /auth/callback redirects here with ?mode=claim after ACCOUNT_NOT_CLAIMED. The Supabase
+   *  token itself travels in sessionStorage, not the URL — ClaimAccountForm picks it up. */
+  const isClaimMode = searchParams.get("mode") === "claim";
 
   const { user, isLoading, refreshUser } = useAuth();
   const [activeTab, setActiveTab] = useState<ActiveTab>(() =>
-    tokenParam ? "claim" : "login"
+    tokenParam || isClaimMode ? "claim" : "login"
   );
   const [showSignatureModal, setShowSignatureModal] = useState(false);
 

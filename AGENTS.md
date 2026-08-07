@@ -102,11 +102,24 @@ For human collaborators, see the per-folder READMEs and `docs/`.
 
 - First time: `npm install` (root, pins the `supabase` CLI), then
   `npm run install:all` to install api/ and web/ deps.
+- **Two env files**: `api/.env` (Express server **and** the Supabase CLI's
+  `env()` substitutions) and `web/.env` (`NEXT_PUBLIC_*` only). There is
+  deliberately no root `.env`. Both are ignored by `.gitignore:34-35`, as are
+  their `.env.example` templates — `web/.env.example` is in git only because it
+  was force-added (`git add -f`); `api/.env.example` is **not tracked at all**.
+- Before the first `supabase start`: fill
+  `SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID` / `_SECRET` in `api/.env`, or the
+  "Continue with Google" button 400s with `provider is not enabled`.
 - Start Supabase: `npm run supabase:start` (first run pulls ~1.5 GB of Docker
   images; on Linux the user must be in the `docker` group).
-- Copy the three keys from `supabase start` output into `api/.env` and
-  `web/.dev.vars` (templates: `api/.env.example`, `web/.dev.vars.example`).
-  See `supabase/doc/SUPABASE.md` for the full table of which key goes where.
+- Copy the keys from `supabase start` output into `api/.env` (template:
+  `api/.env.example`). `web/` needs only `NEXT_PUBLIC_SUPABASE_URL` — no
+  Supabase key at all — in `web/.env` (template: `web/.env.example`).
+  <!-- Corrected 2026-08-07: this bullet used to say the keys go in `web/.dev.vars`
+       (template `web/.dev.vars.example`, per `supabase/doc/SUPABASE.md`). Neither
+       `web/.dev.vars.example` nor `supabase/doc/` exists. `web/.dev.vars` does exist
+       but holds only `NEXTJS_ENV`; it is for real Cloudflare bindings (R2/KV/D1),
+       not plain strings — see the header comment in `web/.env.example`. -->
 - Start both apps: `npm run dev` (concurrently). Or individually:
   `npm run dev:api`, `npm run dev:web`.
 
@@ -172,6 +185,21 @@ For human collaborators, see the per-folder READMEs and `docs/`.
 - The default `web/src/app/page.tsx` is still the `create-next-app` starter
   page. Treat it as unstarted UI work, not the real home page.
 - `web/src/lib/api/types.gen.ts` is generated; do not hand-edit.
+- **Google sign-in does not create a Supabase-backed session.** Supabase Auth is
+  only an identity handshake: `web/src/lib/auth/supabaseOAuth.ts` redirects to
+  `/auth/v1/authorize`, `web/src/app/auth/callback/page.tsx` reads the token out
+  of the URL fragment (implicit flow) and trades it at
+  `POST /auth/login/supabase` for one of the API's own RS256 sessions. A 404
+  `ACCOUNT_NOT_CLAIMED` routes to `/login?mode=claim`, where `ClaimAccountForm`
+  picks the token back up from `sessionStorage` (never a query param) and calls
+  `POST /auth/claim`. Deliberately **no `@supabase/supabase-js` in `web/`** — it
+  would persist a second session nothing reads, and require an anon key.
+- **Frontend env vars are build-time, not runtime.** `NEXT_PUBLIC_*` is inlined
+  by `next build`, so `NEXT_PUBLIC_API_URL` and `NEXT_PUBLIC_SUPABASE_URL` must
+  be set wherever `opennextjs-cloudflare build` runs. Setting them as Worker
+  vars in the Cloudflare dashboard has no effect on browser code. Template:
+  `web/.env.example` (which, unlike `api/.env.example`, is force-added to git —
+  `.gitignore:35` ignores `.env.example`).
 - **Available scripts:** `npm run dev`, `npm run build`, `npm run start`,
   `npm run lint`, `npm run preview` (builds + OpenNext preview on the
   Cloudflare runtime), `npm run deploy`, `npm run upload`,
@@ -195,6 +223,29 @@ For human collaborators, see the per-folder READMEs and `docs/`.
 - `uuid_generate_v7()` is defined here, not in an extension — so PKs are
   time-sortable. The `finance` schema's own migration owns it; do not
   duplicate it in api/.
+- **Google OAuth is enabled in `config.toml` (`[auth.external.google]`) but needs
+  two secrets from the environment**: `SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID`
+  and `SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_SECRET`, resolved via `env()`. They
+  live in **`api/.env`**, even though the Express app never reads them — one file
+  for all Supabase secrets. The CLI has no `--env-file` flag and only auto-loads
+  a `.env` from its own cwd, so the root `supabase:*` scripts pass the file
+  explicitly with `node --env-file-if-exists=api/.env node_modules/.bin/supabase …`.
+  **Consequence: a bare `npx supabase start` does not see these vars** — use
+  `npm run supabase:start`. `npm run supabase:status` prints
+  `WARN: environment variable is unset: …` for each one it can't resolve, which
+  is the quickest check that the file is wired up.
+  <!-- Do not "simplify" this to `set -a; . ./api/.env; set +a`. Verified
+       2026-08-08: api/.env holds an unquoted multi-word PEM in JWT_PRIVATE_KEY,
+       which shell sourcing would try to execute as commands. node's dotenv
+       parser handles it, and does no $-expansion or backtick evaluation. -->
+  The Google client's authorized redirect URI for local dev is
+  `http://127.0.0.1:54321/auth/v1/callback` — GoTrue's callback, *not* the app's.
+- `additional_redirect_urls` must contain the **exact** post-auth URL. It lists
+  both `http://127.0.0.1:3000/auth/callback` and `http://localhost:3000/auth/callback`
+  because `next dev` serves on `localhost` while `site_url` uses `127.0.0.1`; an
+  unlisted `redirect_to` is silently rewritten to `site_url` and the session
+  fragment is lost. The hosted project's equivalent list lives in the dashboard
+  under Authentication → URL Configuration and is **not** managed by this file.
 - `supabase/snippets/` is empty but reserved; the comment in `config.toml`
   about `auto_expose_new_tables` being removed `2026-10-30` is worth knowing
   before adding new tables.

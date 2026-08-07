@@ -22,6 +22,20 @@ export async function claimApi(password: string, sessionToken: string) {
 }
 
 /**
+ * Login via an existing Supabase Auth session (POST /auth/login/supabase) — the Google sign-in
+ * path. Sends the *Supabase* access token as Bearer, not one of our own; the API verifies it
+ * against GoTrue and issues one of our sessions in exchange. 404 ACCOUNT_NOT_CLAIMED means the
+ * staff row exists but has no password yet — send the user through claimApi with the same token.
+ */
+export async function loginViaSupabaseApi(supabaseAccessToken: string) {
+  return await api.POST("/auth/login/supabase", {
+    headers: {
+      Authorization: `Bearer ${supabaseAccessToken}`,
+    },
+  });
+}
+
+/**
  * Get current staff profile & scope (GET /auth/me)
  */
 export async function getMeApi() {
