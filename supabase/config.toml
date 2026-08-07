@@ -165,7 +165,14 @@ site_url = "http://127.0.0.1:3000"
 # The public URL that Auth serves on. Defaults to the API external URL with `/auth/v1` appended.
 # external_url = ""
 # A list of *exact* URLs that auth providers are permitted to redirect to post authentication.
-additional_redirect_urls = ["https://127.0.0.1:3000"]
+# /auth/callback is where the app exchanges the Supabase session for one of ours — a redirect_to
+# that is not listed here is silently rewritten to site_url, which drops the session fragment.
+# Both hostnames are listed because `next dev` serves on localhost and site_url uses 127.0.0.1;
+# the allow-list matches the *exact* string the browser was sent to.
+additional_redirect_urls = [
+  "http://127.0.0.1:3000/auth/callback",
+  "http://localhost:3000/auth/callback",
+]
 # How long tokens are valid for, in seconds. Defaults to 3600 (1 hour), maximum 604,800 (1 week).
 jwt_expiry = 3600
 # JWT issuer URL. If not set, defaults to auth.external_url.
@@ -337,6 +344,29 @@ url = ""
 # If enabled, the nonce check will be skipped. Required for local sign in with Google auth.
 skip_nonce_check = false
 # If enabled, it will allow the user to successfully authenticate when the provider does not return an email address.
+email_optional = false
+
+# Google sign-in — the "Continue with Google" button on /login. Google is only an identity
+# handshake here: the frontend takes the resulting Supabase session straight to
+# POST /auth/login/supabase (#58) or POST /auth/claim (#57), which look the email up in the
+# `staff` table and issue one of OUR RS256 sessions. A Google account with no `staff` row
+# gets ACCOUNT_NOT_CLAIMED / NOT_PROVISIONED — the staff table is the real gate, not Google.
+#
+# client_id below is the *local-dev* Google OAuth client. Its authorized redirect URI must be
+# http://127.0.0.1:54321/auth/v1/callback (the local GoTrue callback, NOT the Next.js app).
+# The hosted project is configured in the Supabase dashboard instead — this file is local only.
+[auth.external.google]
+enabled = true
+client_id = "env(SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID)"
+# DO NOT commit your OAuth provider secret to git. Use environment variable substitution instead:
+secret = "env(SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_SECRET)"
+redirect_uri = ""
+url = ""
+# Leave false: the nonce check only needs skipping for native/one-tap Google sign-in, which
+# this app does not use — it goes through the standard browser redirect.
+skip_nonce_check = false
+# Google always returns an email, and byEmail() in Auth.helper.js is the whole lookup — a
+# session without one could never resolve to a staff row.
 email_optional = false
 
 # Allow Solana wallet holders to sign in to your project via the Sign in with Solana (SIWS, EIP-4361) standard.

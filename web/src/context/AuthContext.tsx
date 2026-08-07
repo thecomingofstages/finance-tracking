@@ -1,7 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
-import { getMeApi, loginApi } from "../lib/api/auth";
+import { getMeApi, loginApi, loginViaSupabaseApi } from "../lib/api/auth";
 import { setAccessToken } from "../lib/api/client";
 
 export interface ScopeMembership {
@@ -32,11 +32,21 @@ export interface AuthUser {
   scope?: Scope;
 }
 
+export interface LoginResult {
+  success: boolean;
+  error?: string;
+  /** Machine-readable code from the API error envelope ({ error: { code, message } }).
+   *  Callers branch on ACCOUNT_NOT_CLAIMED to send the user to the claim form. */
+  code?: string;
+}
+
 export interface AuthContextType {
   user: AuthUser | null;
   isLoading: boolean;
   refreshUser: () => Promise<void>;
-  login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  login: (email: string, password: string) => Promise<LoginResult>;
+  /** Trades a Supabase Auth access token (from the Google redirect) for one of our sessions. */
+  loginWithSupabase: (supabaseAccessToken: string) => Promise<LoginResult>;
   logout: () => Promise<void>;
 }
 
@@ -131,13 +141,55 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  /**
+   * Google sign-in, second half. The Supabase token only proves identity — POST
+   * /auth/login/supabase resolves it to a `staff` row and returns one of our sessions, or 404s
+   * with ACCOUNT_NOT_CLAIMED (row exists, no password yet) / NOT_PROVISIONED (no row at all).
+   * Both surface as `code` so the caller can route to the claim form rather than dead-end.
+   */
+  const loginWithSupabase = async (supabaseAccessToken: string): Promise<LoginResult> => {
+    try {
+      const { data, error, response } = await loginViaSupabaseApi(supabaseAccessToken);
+
+      if (error || !response.ok) {
+        const errObj = error as any;
+        return {
+          success: false,
+          code: errObj?.error?.code,
+          error:
+            errObj?.error?.message ||
+            (response.status === 401
+              ? "เซสชัน Google หมดอายุ กรุณาลองเข้าสู่ระบบใหม่อีกครั้ง"
+              : "เข้าสู่ระบบด้วย Google ไม่สำเร็จ กรุณาติดต่อฝ่าย IT"),
+        };
+      }
+
+      const resData = data as any;
+      const accessToken = resData?.data?.access_token || resData?.access_token;
+
+      if (accessToken) {
+        setAccessToken(accessToken);
+      }
+
+      await refreshUser();
+      return { success: true };
+    } catch (err: any) {
+      return {
+        success: false,
+        error: err?.message || "เกิดข้อผิดพลาดในการเชื่อมต่อระบบ กรุณาติดต่อฝ่าย IT",
+      };
+    }
+  };
+
   const logout = async () => {
     setAccessToken(null);
     setUser(null);
   };
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, refreshUser, login, logout }}>
+    <AuthContext.Provider
+      value={{ user, isLoading, refreshUser, login, loginWithSupabase, logout }}
+    >
       {children}
     </AuthContext.Provider>
   );

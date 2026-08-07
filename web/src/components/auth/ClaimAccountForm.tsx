@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { claimApi } from "@/lib/api/auth";
+import { clearPendingToken, peekPendingToken } from "@/lib/auth/supabaseOAuth";
 
 export interface ClaimAccountFormProps {
   initialToken?: string;
@@ -15,11 +16,25 @@ export const ClaimAccountForm: React.FC<ClaimAccountFormProps> = ({
   onBackToLogin,
 }) => {
   const [sessionToken, setSessionToken] = useState(initialToken);
+  /** True when the Supabase token came from a link or the Google redirect rather than a paste,
+   *  which is the only case where we hide the manual token field. */
+  const [isTokenProvided, setIsTokenProvided] = useState(Boolean(initialToken));
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+
+  /** Google-sign-in path: /auth/callback got ACCOUNT_NOT_CLAIMED and stashed the Supabase token
+   *  for us. An explicit initialToken (the email invite link) still wins. */
+  useEffect(() => {
+    if (initialToken) return;
+    const pending = peekPendingToken();
+    if (pending) {
+      setSessionToken(pending);
+      setIsTokenProvided(true);
+    }
+  }, [initialToken]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -71,6 +86,8 @@ export const ClaimAccountForm: React.FC<ClaimAccountFormProps> = ({
         return;
       }
 
+      // Consumed — don't leave a live Supabase token in sessionStorage for the rest of the tab.
+      clearPendingToken();
       setSuccessMessage("ตั้งรหัสผ่านเรียบร้อยแล้ว กรุณาเข้าสู่ระบบด้วยรหัสผ่านใหม่");
       onSuccess?.();
     } catch {
@@ -130,8 +147,8 @@ export const ClaimAccountForm: React.FC<ClaimAccountFormProps> = ({
           </div>
         )}
 
-        {/* Hide manual token input if token was already provided in URL */}
-        {!initialToken && (
+        {/* Hide manual token input if the token came from the invite link or Google redirect */}
+        {!isTokenProvided && (
           <div>
             <label
               htmlFor="sessionToken"
