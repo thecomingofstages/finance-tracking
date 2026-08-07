@@ -4,19 +4,47 @@ const fixtures = require("../../mocks/fixtures");
 /**
  * Grep this file for `TODO(mock)` to find every spot returning fixture data instead of
  * querying Postgres. Endpoint numbers (#N) match docs/backend/03-api-spec.md §2.
+ * #37 and #40 are real (doc 03 §8); #38/#39 are unchanged, still mocked.
  */
 class PaymentHelper {
-  /** #37 — POST /payments (service-token ingress from Enroll/Merch) */
+  /** #37 — POST /payments (service-token ingress from Enroll/Merch). Idempotent on `_id`
+   *  (doc 03 §8) — a retry must hit the same row, not create a second one.
+   *
+   *  Real gap surfaced here, not in doc 02: `payment_updatestatus.staff_id` is NOT NULL at the
+   *  DB level, but this route has no user context to attribute an initial status row to (it's
+   *  an unauthenticated service call). Rather than invent a fake "system" staff account, this
+   *  deliberately does NOT insert an initial payment_updatestatus row — bulkApprove() below
+   *  treats "no history yet" as implicitly 'waiting', which is exactly what an explicit
+   *  waiting row would have meant anyway. */
   static async ingest(payload) {
-    const { _id, source_id, expected_amount, promptpay_qr_data } = payload;
+    const { _id, user_id, source_id, expected_amount, promptpay_qr_data } = payload;
     if (!_id || !source_id) throw ApiError.validation("_id and source_id are required.");
-    // TODO(mock): resolve source by (type, reference_id), 404 SOURCE_NOT_FOUND if none
-    // configured — the caller supplies source_id directly right now, bypassing that lookup.
-    // TODO(mock): idempotent on PK conflict — return 200 with the existing record instead of
-    // always inserting/returning a fresh fixture.
-    // TODO(mock): promptpay_qr_data has no unique index yet (doc 02 §6 gap #5) — check for a
-    // live duplicate manually before insert once this is real.
-    return fixtures.payment({ _id, source_id, expected_amount, promptpay_qr_data });
+
+    const { Payment, Source } = require("../models");
+
+    const existing = await Payment.findByPk(_id);
+    if (existing) return { payment: existing.toJSON(), isNew: false };
+
+    const source = await Source.findByPk(source_id);
+    if (!source) throw ApiError.notFound("No source configured for this activity/store yet.", "SOURCE_NOT_FOUND");
+
+    // No unique index on promptpay_qr_data yet (doc 02 §6 gap #5) — check-then-insert race,
+    // acceptable until that index lands. A different payment already holding this exact QR
+    // string is a real duplicate-slip signal, not just a retry (a retry reuses the same _id,
+    // caught by the findByPk above already).
+    if (promptpay_qr_data) {
+      const dupe = await Payment.findOne({ where: { promptpay_qr_data } });
+      if (dupe) throw ApiError.conflict("This QR data is already attached to another payment.", "DUPLICATE_QR_DATA");
+    }
+
+    const payment = await Payment.create({
+      _id,
+      user_id: user_id ?? null,
+      source_id,
+      expected_amount: expected_amount ?? 0,
+      promptpay_qr_data: promptpay_qr_data ?? null,
+    });
+    return { payment: payment.toJSON(), isNew: true };
   }
 
   /** #38 — GET /payments (the /checkslip queue) */
@@ -34,33 +62,80 @@ class PaymentHelper {
     return { ...fixtures.payment({ _id: paymentId }), history: fixtures.paymentStatusHistory(paymentId) };
   }
 
-  /** #40 — POST /payments/approve (bulk, step-up required). Doc 03 §8 — idempotent per item,
-   *  skips (not errors) on a concurrent duplicate decision. The validation and the
-   *  skip-if-invalid branches below are real; only the actual DB write is mocked. */
-  static async bulkApprove(decisions) {
+  /** #40 — POST /payments/approve (bulk, step-up required, doc 03 §8). Idempotent per item —
+   *  one transaction per payment, not one for the whole batch, so a bad row can't roll back
+   *  the nine good ones next to it. `amount_matches` is real now: accept-and-flag on a
+   *  mismatch rather than hard-reject (open question #9 — the less disruptive of the two
+   *  documented options; revisit if Finance wants a hard block instead). */
+  static async bulkApprove(decisions, staffId) {
     if (!Array.isArray(decisions) || !decisions.length) {
       throw ApiError.validation("decisions must be a non-empty array.", "decisions");
     }
-    return decisions.map((d) => {
+
+    const { Payment, PaymentStatus, Source, ProjectTag, Project, StaffDept, Department, sequelize } = require("../models");
+
+    const results = [];
+    for (const d of decisions) {
       if (!["approved", "rejected"].includes(d.status)) {
-        return { payment_id: d.payment_id, outcome: "skipped", reason: "Invalid target status." };
+        results.push({ payment_id: d.payment_id, outcome: "skipped", reason: "Invalid target status." });
+        continue;
       }
       if (d.status === "approved" && d.actual_amount == null) {
-        return { payment_id: d.payment_id, outcome: "skipped", reason: "actual_amount is required on approval." };
+        results.push({ payment_id: d.payment_id, outcome: "skipped", reason: "actual_amount is required on approval." });
+        continue;
       }
-      // TODO(mock): real per-item transaction — resolve payment -> source, check is_finance,
-      // read latest payment_updatestatus, skip if someone else already decided it, insert a
-      // new status row, and explicitly roll up source.actual_amount (doc 02 §6 gap #1 — no
-      // trigger does this yet, so this write has to happen here by hand).
-      return {
+
+      const payment = await Payment.findByPk(d.payment_id, { include: [{ model: Source, as: "source" }] });
+      if (!payment) {
+        results.push({ payment_id: d.payment_id, outcome: "skipped", reason: "Payment not found." });
+        continue;
+      }
+
+      // Per-item, not batch-wide (doc 03 §8) — every finance staff can only decide payments
+      // funding a source in a project they're actually finance for. Real StaffDept query, not
+      // the still-mock-permissive req.scope — see Reimbursement.helper.js for the same pattern.
+      const isFinance = Boolean(
+        await StaffDept.findOne({
+          where: { staff_id: staffId, is_finance: true },
+          include: [{ model: Department, as: "department", where: { project_id: payment.source.project_id }, attributes: [] }],
+        })
+      );
+      if (!isFinance) {
+        results.push({ payment_id: d.payment_id, outcome: "skipped", reason: "Not finance for this payment's project." });
+        continue;
+      }
+
+      const latest = await PaymentStatus.findOne({ where: { payment_id: d.payment_id }, order: [["created_at", "DESC"]] });
+      const currentStatus = latest?.status || "waiting";
+      if (["approved", "rejected"].includes(currentStatus)) {
+        results.push({ payment_id: d.payment_id, outcome: "skipped", reason: `Already ${currentStatus} by another finance staff.` });
+        continue;
+      }
+
+      await sequelize.transaction(async (t) => {
+        await PaymentStatus.create(
+          { payment_id: d.payment_id, status: d.status, actual_amount: d.status === "approved" ? d.actual_amount : null, staff_id: staffId },
+          { transaction: t }
+        );
+        if (d.status === "approved") {
+          // No trigger rolls this up yet (doc 02 §6 gap #1) — explicit write, same transaction
+          // as the status insert so a rollup failure rolls the decision back with it.
+          await Source.increment("actual_amount", { by: d.actual_amount, where: { _id: payment.source_id }, transaction: t });
+          if (payment.source.tag_id) {
+            await ProjectTag.increment("total_income", { by: d.actual_amount, where: { _id: payment.source.tag_id }, transaction: t });
+          }
+          await Project.increment("total_income", { by: d.actual_amount, where: { _id: payment.source.project_id }, transaction: t });
+        }
+      });
+
+      results.push({
         payment_id: d.payment_id,
-        outcome: d.status === "approved" ? "approved" : "rejected",
-        // TODO(mock): this always reports a match — real implementation compares
-        // actual_amount against the payment's own expected_amount. See open question #9 for
-        // whether a mismatch should hard-reject or accept-and-flag.
-        amount_matches: d.status === "approved" ? true : undefined,
-      };
-    });
+        outcome: d.status,
+        amount_matches: d.status === "approved" ? d.actual_amount === payment.expected_amount : undefined,
+      });
+    }
+
+    return results;
   }
 }
 

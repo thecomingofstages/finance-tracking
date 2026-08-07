@@ -1,0 +1,269 @@
+{
+  "info": {
+    "_postman_id": "d8b3f4a2-6e1c-4a9d-8f2b-tcos-payrei-0001",
+    "name": "TCOS Finance Tracking — Payments & Reimbursement Approval (chompoo)",
+    "description": "The 5 endpoints from this pass — POST /payments (#37, service token), POST /payments/approve (#40, step-up), POST /reimbursements/:id/status (#47, step-up), GET /reimbursements/:id/document (#48), POST /reimbursements/import (#49) — plus POST /reimbursements (#41, not itself one of the 5 but required plumbing: #47/#48 need a real reimbursement to act on).\n\nSelf-contained: includes its own Login requests (multiple actors — head/finance/owner all play different real roles here) so this collection runs standalone. Uses real seeded data: project `TCOS Annual Event 2026`, department `Finance` (chompoo is head+finance there), source `Booth Sponsor A`.\n\n**A reauth token (`X-Reauth-Token`) is scoped to whoever verified it** — it won't work for a different Bearer token, even a valid one. Whenever the acting user changes, re-run Verify Password for that specific user right before the step that needs it (steps 5, 6b, 9 all do this — don't skip 6b thinking 5's token still counts for beam).\n\n**Run order (approval chain)**: 1 → 2 → 3 → 4 (Finance login) → 5 → 6 (Owner login) → **6b (re-verify as beam)** → 7 → 7b. **Payments**: 8 → 9 (Finance login + step-up) → 10 → 11. **Import**: 12.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:4000/v1", "type": "string" },
+    { "key": "department_id", "value": "20000000-0000-0000-0000-000000000001", "type": "string", "description": "Finance dept — chompoo is head+finance here" },
+    { "key": "project_id", "value": "10000000-0000-0000-0000-000000000001", "type": "string" },
+    { "key": "source_id", "value": "60000000-0000-0000-0000-000000000001", "type": "string", "description": "Booth Sponsor A" },
+    { "key": "chompoo_token", "value": "", "type": "string" },
+    { "key": "golf_token", "value": "", "type": "string" },
+    { "key": "beam_token", "value": "", "type": "string" },
+    { "key": "reauth_token", "value": "", "type": "string" },
+    { "key": "reimbursement_id", "value": "", "type": "string" },
+    { "key": "tracking_id", "value": "TCOS3-0001", "type": "string" },
+    { "key": "service_token", "value": "dev-service-token-enroll-change-sixseven", "type": "string", "description": "SERVICE_TOKEN_ENROLL from api/.env — replace if the real one differs" },
+    { "key": "payment_id", "value": "", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "0. Setup notes (read me)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": { "raw": "{{base_url}}/health", "host": ["{{base_url}}"], "path": ["health"] },
+        "description": "This flow spans three real actors with three real roles, because the approval chain genuinely requires different people at each step (doc 04 §4 — that's the whole point of the state machine):\n\n- **chompoo** (`chompoo@tcos.app`) — head + finance of the Finance department → creating a reimbursement there auto-verifies to head_approve immediately (doc 04 §4 auto-verify).\n- **golf** (`golf@tcos.app`) — finance of the project → approves head_approve→fin_approve, assigns tracking_id; also approves payments.\n- **beam** (`beam@tcos.app`) — owner role → fin_approve→transfer.\n\nAll three share the seed password `Passw0rd!2026`. `service_token` is `SERVICE_TOKEN_ENROLL` straight from `api/.env` — update the variable if yours differs.\n\nPOST /payments/approve and POST /reimbursements/:id/status both require step-up (`X-Reauth-Token`, doc 04 §9). A reauth token only works for the staff_id that verified it — swapping actors (golf → beam) means re-running POST /auth/verify-password as the NEW actor, even though the old token hasn't expired yet. Requests 5, 6b, and 9 each get one for whoever's about to act next — run them in order, don't skip 6b."
+      },
+      "response": []
+    },
+    {
+      "name": "1. Login (chompoo — head+finance)",
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "if (pm.response.code === 200) pm.collectionVariables.set('chompoo_token', pm.response.json().data.access_token);"
+      ] } }],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"email\": \"chompoo@tcos.app\",\n  \"password\": \"Passw0rd!2026\"\n}" },
+        "url": { "raw": "{{base_url}}/auth/login", "host": ["{{base_url}}"], "path": ["auth", "login"] }
+      },
+      "response": []
+    },
+    {
+      "name": "2. Create Reimbursement (auto-verify)",
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "if (pm.response.code === 201) {",
+        "  pm.collectionVariables.set('reimbursement_id', pm.response.json().data._id);",
+        "  pm.test('auto-verified straight to head_approve (chompoo heads this department)', () => {",
+        "    pm.expect(pm.response.json().data.latest_status).to.eql('head_approve');",
+        "  });",
+        "}"
+      ] } }],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{chompoo_token}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"department_id\": \"{{department_id}}\",\n  \"purpose\": \"Postman verification run\",\n  \"details\": [\n    { \"title\": \"\\u0e04\\u0e48\\u0e32\\u0e2d\\u0e38\\u0e1b\\u0e01\\u0e23\\u0e13\\u0e4c\", \"amount\": 12000 }\n  ]\n}"
+        },
+        "url": { "raw": "{{base_url}}/reimbursements", "host": ["{{base_url}}"], "path": ["reimbursements"] },
+        "description": "#41 — chompoo is head of {{department_id}}, so this lands straight in head_approve, not waiting (doc 04 §4). meta.budget is a real computed projection, not a fixture."
+      },
+      "response": []
+    },
+    {
+      "name": "3. Document — request, html (ใบเบิกเงิน)",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{chompoo_token}}" }],
+        "url": {
+          "raw": "{{base_url}}/reimbursements/{{reimbursement_id}}/document?type=request&format=html",
+          "host": ["{{base_url}}"],
+          "path": ["reimbursements", "{{reimbursement_id}}", "document"],
+          "query": [{ "key": "type", "value": "request" }, { "key": "format", "value": "html" }]
+        },
+        "description": "#48 — real rendered HTML (open the response in Postman's preview tab). type=voucher would 422 NOT_APPROVED right now — this reimbursement hasn't reached fin_approve yet."
+      },
+      "response": []
+    },
+    {
+      "name": "4. Login (golf — finance)",
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "if (pm.response.code === 200) pm.collectionVariables.set('golf_token', pm.response.json().data.access_token);"
+      ] } }],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"email\": \"golf@tcos.app\",\n  \"password\": \"Passw0rd!2026\"\n}" },
+        "url": { "raw": "{{base_url}}/auth/login", "host": ["{{base_url}}"], "path": ["auth", "login"] }
+      },
+      "response": []
+    },
+    {
+      "name": "5. Status: head_approve -> fin_approve",
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "if (pm.response.code === 200) {",
+        "  const rt = pm.response.json().data.reauth_token;",
+        "  if (rt) pm.collectionVariables.set('reauth_token', rt);",
+        "}"
+      ] } }],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{golf_token}}" },
+          { "key": "X-Reauth-Token", "value": "{{reauth_token}}" }
+        ],
+        "body": { "mode": "raw", "raw": "{\n  \"status\": \"fin_approve\",\n  \"tracking_id\": \"{{tracking_id}}\"\n}" },
+        "url": { "raw": "{{base_url}}/reimbursements/{{reimbursement_id}}/status", "host": ["{{base_url}}"], "path": ["reimbursements", "{{reimbursement_id}}", "status"] },
+        "description": "#47 — needs a real X-Reauth-Token. If this 401s REAUTH_REQUIRED, run \"9. Verify Password (get step-up token)\" as golf first, then come back. golf is real finance on this project (StaffDept query, not the mock scope) so this is a genuine isFinance check passing, not a bypass."
+      },
+      "response": []
+    },
+    {
+      "name": "6. Login (beam — owner)",
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "if (pm.response.code === 200) pm.collectionVariables.set('beam_token', pm.response.json().data.access_token);"
+      ] } }],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"email\": \"beam@tcos.app\",\n  \"password\": \"Passw0rd!2026\"\n}" },
+        "url": { "raw": "{{base_url}}/auth/login", "host": ["{{base_url}}"], "path": ["auth", "login"] }
+      },
+      "response": []
+    },
+    {
+      "name": "6b. Verify Password (get step-up token, as beam)",
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "if (pm.response.code === 200) pm.collectionVariables.set('reauth_token', pm.response.json().data.reauth_token);"
+      ] } }],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{beam_token}}" }
+        ],
+        "body": { "mode": "raw", "raw": "{\n  \"password\": \"Passw0rd!2026\"\n}" },
+        "url": { "raw": "{{base_url}}/auth/verify-password", "host": ["{{base_url}}"], "path": ["auth", "verify-password"] },
+        "description": "doc 04 §9 — a reauth token is scoped to whichever staff_id verified it (requireReauth checks the token's `sub` against the CALLER's own staffId, not just any valid token). Step 5's reauth token belongs to golf; step 7's caller is beam, so it needs its own — this is that one. Run this right before step 7, every time you re-run the collection."
+      },
+      "response": []
+    },
+    {
+      "name": "7. Status: fin_approve -> transfer (rolls up totals)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{beam_token}}" },
+          { "key": "X-Reauth-Token", "value": "{{reauth_token}}" }
+        ],
+        "body": { "mode": "raw", "raw": "{\n  \"status\": \"transfer\"\n}" },
+        "url": { "raw": "{{base_url}}/reimbursements/{{reimbursement_id}}/status", "host": ["{{base_url}}"], "path": ["reimbursements", "{{reimbursement_id}}", "status"] },
+        "description": "#47 — owner-only (real role check, straight off beam's JWT). Rolls the ฿120.00 total up to department.total_expense/project.total_expense for real (no trigger does this yet, doc 02 §6 gap #1). Needs the reauth token from \"6b. Verify Password (as beam)\" run just before this — step 5's reauth token belongs to golf and will 401 REAUTH_REQUIRED here even though it's still valid, because it's the wrong person's."
+      },
+      "response": []
+    },
+    {
+      "name": "7b. Document — voucher, html (now valid)",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{golf_token}}" }],
+        "url": {
+          "raw": "{{base_url}}/reimbursements/{{reimbursement_id}}/document?type=voucher&format=html",
+          "host": ["{{base_url}}"],
+          "path": ["reimbursements", "{{reimbursement_id}}", "document"],
+          "query": [{ "key": "type", "value": "voucher" }, { "key": "format", "value": "html" }]
+        },
+        "description": "#48 — ใบสำคัญจ่าย. Would have 422'd NOT_APPROVED before step 7; now latest_status is transfer, so it renders. golf sees the full bank account number (is_finance); a plain head would see it masked."
+      },
+      "response": []
+    },
+    {
+      "name": "8. Ingest Payment (service token, #37)",
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "const body = pm.response.json();",
+        "if (body && body.data) pm.collectionVariables.set('payment_id', body.data._id);"
+      ] } }],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "X-Service-Token", "value": "{{service_token}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"_id\": \"{{$guid}}\",\n  \"source_id\": \"{{source_id}}\",\n  \"expected_amount\": 20000,\n  \"promptpay_qr_data\": \"00020101021229370016A000000677010111...\"\n}"
+        },
+        "url": { "raw": "{{base_url}}/payments", "host": ["{{base_url}}"], "path": ["payments"] },
+        "description": "#37 — no Bearer token, X-Service-Token instead (never reachable with a user JWT — real, separate middleware). `{{$guid}}` (Postman's built-in dynamic variable) gives a fresh UUID each run; re-sending the exact same request body twice is what proves idempotency (second call returns 200 with the same row, not a new one — try it)."
+      },
+      "response": []
+    },
+    {
+      "name": "9. Verify Password (get step-up token, as golf)",
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "if (pm.response.code === 200) pm.collectionVariables.set('reauth_token', pm.response.json().data.reauth_token);"
+      ] } }],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{golf_token}}" }
+        ],
+        "body": { "mode": "raw", "raw": "{\n  \"password\": \"Passw0rd!2026\"\n}" },
+        "url": { "raw": "{{base_url}}/auth/verify-password", "host": ["{{base_url}}"], "path": ["auth", "verify-password"] },
+        "description": "doc 04 §9 — 5-minute reauth token, scoped to golf's staff_id. Overwrites the `reauth_token` variable used by both the status-change and payment-approve requests."
+      },
+      "response": []
+    },
+    {
+      "name": "10. Approve Payment (bulk, #40)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{golf_token}}" },
+          { "key": "X-Reauth-Token", "value": "{{reauth_token}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"decisions\": [\n    { \"payment_id\": \"{{payment_id}}\", \"status\": \"approved\", \"actual_amount\": 20000 }\n  ]\n}"
+        },
+        "url": { "raw": "{{base_url}}/payments/approve", "host": ["{{base_url}}"], "path": ["payments", "approve"] },
+        "description": "#40 — golf is real finance on this payment's project (direct StaffDept query). Rolls source.actual_amount (and project/tag total_income) up for real, same transaction as the status insert. Run this twice in a row: the second run reports `outcome: \"skipped\"` for the same payment_id instead of erroring (doc 03 §8 idempotency)."
+      },
+      "response": []
+    },
+    {
+      "name": "11. Reject a payment (single-item batch)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{golf_token}}" },
+          { "key": "X-Reauth-Token", "value": "{{reauth_token}}" }
+        ],
+        "body": { "mode": "raw", "raw": "{\n  \"decisions\": [\n    { \"payment_id\": \"{{payment_id}}\", \"status\": \"rejected\" }\n  ]\n}" },
+        "url": { "raw": "{{base_url}}/payments/approve", "host": ["{{base_url}}"], "path": ["payments", "approve"] },
+        "description": "#40 — there's no separate single-approve endpoint (doc 03 §8 note) — a batch of one is how you approve/reject just one payment. This one will report \"skipped\" if you already approved {{payment_id}} in step 10 (already-decided payments are skipped, not re-decided)."
+      },
+      "response": []
+    },
+    {
+      "name": "12. Bulk Import Reimbursements (CSV, #49)",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Authorization", "value": "Bearer {{golf_token}}" }],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            { "key": "project_id", "value": "{{project_id}}", "type": "text" },
+            { "key": "file", "type": "file", "src": [] }
+          ]
+        },
+        "url": { "raw": "{{base_url}}/reimbursements/import", "host": ["{{base_url}}"], "path": ["reimbursements", "import"] },
+        "description": "#49 — golf is finance on {{project_id}}. Attach a CSV to the `file` field with columns `requester_email,department,purpose,title,amount` (optionally `tag`), e.g.:\n```\nrequester_email,department,purpose,title,amount\nmark@tcos.app,IT,\\u0e04\\u0e48\\u0e32\\u0e2d\\u0e38\\u0e1b\\u0e01\\u0e23\\u0e13\\u0e4c\\u0e44\\u0e2d\\u0e17\\u0e35,\\u0e2a\\u0e32\\u0e22 HDMI,5000\n```\nEvery row lands straight in 'waiting' (or 'head_approve' if that row's requester heads the department) — same all-or-nothing validation as Staff's CSV import: one bad row (unknown email/department, not-a-member) rejects the whole file with a per-row error list, nothing gets created. This is a fixed column format, not the doc's aspirational per-project-configurable mapping — see Reimbursement.helper.js's #49 doc comment."
+      },
+      "response": []
+    }
+  ]
+}

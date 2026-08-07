@@ -273,7 +273,13 @@ BEGIN
   WHERE _id = NEW.reimbursement_id;
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql
+-- Without this, the function resolves reimbursement_available_status (which lives in
+-- `finance`, not `public`) using the search_path of whatever session's INSERT fired the
+-- trigger — our app's own DB connection, which has no reason to include `finance` by default
+-- — and fails at runtime with "type ... does not exist" the moment a real row is inserted.
+-- Pinning the function's own search_path makes it correct regardless of the caller's.
+SET search_path = finance, public;
 
 CREATE TRIGGER trg_sync_reimbursement_latest_status
 AFTER INSERT ON reimbursement_updatestatus

@@ -38,9 +38,14 @@ This is a **scaffold + working mock server**, not the real implementation:
 - **Mocked**: every helper method returns fixture data instead of querying Postgres. Each one
   has a `// TODO: real implementation —` comment describing what it should do instead, usually
   copied near-verbatim from the matching flow in `docs/backend/03-api-spec.md`.
-- **Deferred entirely**: Puppeteer/Handlebars PDF rendering (returns a placeholder PDF instead —
-  see `src/app/utils/PDF.util.js`), real XLSX export (returns CSV — see `Report.helper.js`),
-  Jest test suite, `eslint.config.js`.
+- **Real PDF rendering**: real Puppeteer for both document types — see
+  `src/app/utils/PDF.util.js`. `type=request` (ใบเบิกเงิน) renders the actual company template
+  from github.com/thecomingofstages/finance-pdfgenerator
+  (`templates/reimbursement-request.html`). `type=voucher` (ใบสำคัญจ่าย) is hand-built from a
+  real exported example (`templates/reimbursement-voucher.html`) — its หัก ณ ที่จ่าย
+  (withholding tax) always shows 0, since nothing in this schema models a tax rate yet.
+- **Deferred entirely**: real XLSX export (returns CSV — see `Report.helper.js`),
+  `eslint.config.js`.
 
 Flip `MOCK_MODE=false` in `.env` once a domain's helpers are wired to real models — nothing else
 needs to change, since controllers/routes don't know which mode they're in.

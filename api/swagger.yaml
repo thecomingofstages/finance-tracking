@@ -745,9 +745,10 @@ paths:
                 expected_amount: { type: integer }
                 promptpay_qr_data: { type: string }
       responses:
-        "201": { description: Created (or 200 if already ingested — idempotent) }
+        "201": { description: Created (or 200 if already ingested — idempotent on _id) }
         "401": { $ref: "#/components/responses/Unauthorized" }
-        "404": { $ref: "#/components/responses/NotFound" }
+        "404": { description: "SOURCE_NOT_FOUND — no source configured for this activity/store yet" }
+        "409": { description: "DUPLICATE_QR_DATA — this promptpay_qr_data is already attached to a different payment" }
     get:
       tags: [Payments]
       summary: Checkslip queue (#38) — finance only
@@ -788,8 +789,13 @@ paths:
                       actual_amount: { type: integer }
       responses:
         "200":
-          description: "Partial-success by design — each item is approved/rejected/skipped"
-        "401": { description: REAUTH_REQUIRED }
+          description: >
+            Partial-success by design — each item is approved/rejected/skipped independently,
+            in its own transaction. amount_matches compares actual_amount to the payment's own
+            expected_amount (accept-and-flag on a mismatch, not a hard reject — doc 03 §8 open
+            question #9). Skip reasons: already decided by someone else, payment not found, or
+            caller isn't finance for that payment's project (checked per item, not batch-wide).
+        "401": { description: REAUTH_REQUIRED — missing/expired X-Reauth-Token }
 
   # ---------------------------------------------------------------- Reimbursements (#41-49)
   /reimbursements:
@@ -813,7 +819,17 @@ paths:
                     type: object
                     required: [title, amount]
                     properties: { title: { type: string }, amount: { type: integer, minimum: 1 } }
-      responses: { "201": { description: Created }, "400": { $ref: "#/components/responses/ValidationError" } }
+      responses:
+        "201":
+          description: >
+            Created. meta.budget is a real computed projection (sum of every non-rejected/
+            non-deleted reimbursement in the department vs. its allocated_budget) — warns,
+            never blocks. Lands in 'head_approve' immediately, not 'waiting', if the requester
+            themselves heads the target department (doc 04 §4 auto-verify).
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "403": { description: "Not a member of department_id, or banking_id isn't a live account the caller owns" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { description: "TAG_PROJECT_MISMATCH — tag_id doesn't belong to department_id's project" }
     get:
       tags: [Reimbursements]
       summary: List — scoped to what the caller requested or can approve (#42)
@@ -829,12 +845,29 @@ paths:
   /reimbursements/import:
     post:
       tags: [Reimbursements]
-      summary: Bulk import from Google Form CSV — lands in 'waiting' immediately (#49)
+      summary: Bulk import from Google Form CSV — is_finance on project_id, lands in 'waiting' (#49)
+      description: >
+        Fixed columns (not the doc's aspirational per-project-configurable mapping, which
+        doesn't exist yet): requester_email, department, purpose, title, amount, and optional
+        tag — one detail line per row. All-or-nothing: every row is resolved (requester by
+        email, department/tag by name scoped to project_id) and validated before anything is
+        written; any row failing returns the full per-row list in error.details and inserts
+        nothing. Auto-verifies to head_approve per-row if that row's requester heads the
+        resolved department (same rule as POST /reimbursements).
       requestBody:
         content:
           multipart/form-data:
-            schema: { type: object, properties: { file: { type: string, format: binary } } }
-      responses: { "201": { description: Per-row result } }
+            schema:
+              type: object
+              required: [project_id, file]
+              properties:
+                project_id: { type: string, format: uuid, description: "form field, not JSON — multer only extracts `file`" }
+                file: { type: string, format: binary }
+      responses:
+        "201": { description: "{ created, reimbursement_ids }" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "403": { description: "Caller isn't finance for project_id" }
+        "404": { $ref: "#/components/responses/NotFound" }
 
   /reimbursements/{id}:
     get:
@@ -881,14 +914,33 @@ paths:
                 tracking_id: { type: string, description: required for head_approve -> fin_approve }
                 reason: { type: string, description: required for any -> rejected }
       responses:
-        "200": { description: OK }
+        "200":
+          description: >
+            OK — updated reimbursement + full history. The caller must hold the flag the
+            transition demands (isHead/isFinance/isOwner/isRequester), checked for real via a
+            direct StaffDept query, not the mock-permissive req.scope. fin_approve->transfer
+            (owner only) explicitly rolls the total up to department/project/tag — no trigger
+            does this yet (doc 02 §6 gap #1).
+        "400": { description: "Missing tracking_id (head_approve->fin_approve) or reason (any ->rejected)" }
         "401": { description: REAUTH_REQUIRED }
+        "403": { description: "Caller doesn't hold the required flag for this transition" }
+        "404": { $ref: "#/components/responses/NotFound" }
         "422": { description: INVALID_TRANSITION — see docs/backend/04-authorization.md §4 }
 
   /reimbursements/{id}/document:
     get:
       tags: [Documents]
       summary: Render ใบเบิกเงิน / ใบสำคัญจ่าย (#48)
+      description: >
+        Authorization (requester/head/finance/owner), NOT_APPROVED check, bank-account masking,
+        Thai baht text, and verification QR are all real. Both type=request and type=voucher
+        render real templates (real Puppeteer, both format=html and format=pdf) from real
+        company documents — see templates/reimbursement-request.html and
+        templates/reimbursement-voucher.html. Note: the voucher's หัก ณ ที่จ่าย (withholding
+        tax) always shows 0 — nothing in this schema models a tax rate yet, so it's a real gap,
+        not a computed (possibly wrong) value. Bank account number is masked (xxxxxx1234)
+        unless the viewer is the requester, is_finance on the
+        project, or owner/admin.
       parameters:
         - { $ref: "#/components/parameters/idParam" }
         - { name: type, in: query, required: true, schema: { type: string, enum: [request, voucher] } }
@@ -899,6 +951,9 @@ paths:
           content:
             application/pdf: { schema: { type: string, format: binary } }
             text/html: { schema: { type: string } }
+        "400": { description: "type must be 'request' or 'voucher'" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
         "422": { description: "NOT_APPROVED — voucher requires fin_approve or transfer" }
 
   # ---------------------------------------------------------------- Reports (#50-56)

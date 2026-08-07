@@ -3,10 +3,11 @@ const { ok, created, noContent } = require("../utils/Response.util");
 const Reimbursement = require("../helpers/Reimbursement.helper");
 const Document = require("../helpers/Document.helper");
 
-// MOCK ONLY: there's no real DB holding state between calls yet, so status-dependent routes
-// accept `?mock_status=waiting|head_approve|...` to let FE exercise every branch (e.g. hit
-// PATCH with mock_status=head_approve to see the real 422 INVALID_TRANSITION response).
-// Defaults to 'waiting'. Delete this once Reimbursement.helper.js reads real records.
+// MOCK ONLY, still used by #44/#45/#46 (update/cancel/uploadReceipt) — those three stay
+// fixture-based this pass. `?mock_status=waiting|head_approve|...` lets FE exercise every
+// branch (e.g. hit PATCH with mock_status=head_approve to see the real 422 INVALID_TRANSITION
+// response). Defaults to 'waiting'. #47/#48/#49 below read the real row instead — no mock
+// status needed there anymore.
 const currentStatus = (req) => req.query.mock_status || "waiting";
 
 exports.create = asyncHandler(async (req, res) => {
@@ -35,11 +36,11 @@ exports.uploadReceipt = asyncHandler(async (req, res) =>
 );
 
 exports.changeStatus = asyncHandler(async (req, res) =>
-  ok(res, await Reimbursement.changeStatus(req.params.id, req.body, currentStatus(req)))
+  ok(res, await Reimbursement.changeStatus(req.params.id, req.body, req.scope))
 );
 
 exports.document = asyncHandler(async (req, res) => {
-  const { contentType, body } = await Document.render(req.params.id, req.query);
+  const { contentType, body } = await Document.render(req.params.id, req.query, req.scope);
   res.setHeader("Content-Type", contentType);
   if (contentType === "application/pdf") {
     res.setHeader("Content-Disposition", `inline; filename="reimburse-${req.params.id}.pdf"`);
@@ -48,6 +49,9 @@ exports.document = asyncHandler(async (req, res) => {
 });
 
 exports.bulkImport = asyncHandler(async (req, res) => {
-  const result = await Reimbursement.bulkImport(req.file?.buffer, req.params.id);
+  // multipart/form-data: multer's csvFile middleware only consumes the `file` field, so
+  // project_id (a plain text field, not the upload) lands on req.body like any other
+  // multipart field — no separate JSON body possible alongside a file upload.
+  const result = await Reimbursement.bulkImport(req.file?.buffer, req.body?.project_id, req.scope.staffId);
   return created(res, result);
 });
