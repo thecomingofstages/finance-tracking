@@ -11,6 +11,14 @@ import type { paths } from "./types.gen";
  */
 export const api = createClient<paths>({
   baseUrl: process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/v1",
+  /**
+   * The refresh_token cookie is httpOnly and set by the API on a different origin, so the
+   * browser only attaches it when the request explicitly opts in. Without this, POST
+   * /auth/refresh is sent with no cookie, always 401s, and a page reload logs the user out
+   * permanently. The API already answers with Access-Control-Allow-Credentials: true and a
+   * concrete Access-Control-Allow-Origin (never "*", which credentialed requests forbid).
+   */
+  credentials: "include",
 });
 
 /**

@@ -280,3 +280,52 @@ For human collaborators, see the per-folder READMEs and `docs/`.
   math; never use raw `Number` for currency.
 
 <!-- Agent: append new durable findings below this line. -->
+
+- **`resolveScope` and `requireScope` are both real as of 2026-08-08.** Both live in
+  `api/src/app/middleware/Auth.middleware.js`. Before this, *both* did
+  `return next(new Error("... not wired up yet"))` in the non-mock branch — which meant that
+  the moment `MOCK_MODE=false` shipped to Render, every authenticated route returned 500,
+  because all 7 route files mount `resolveScope`. `GET /auth/me` 500ing is what made login
+  appear to silently fail in production. If you see a blanket 500 on authenticated routes
+  again, check these two first.
+- **`requireScope` takes an explicit target resolver at every call site** — all 28 of them, from
+  `api/src/app/utils/ScopeTarget.util.js`. Do not "simplify" this by inferring the target inside
+  the middleware: `req.params.id` is a project id on `/projects/:id` and a payment id on
+  `/payments/:id`, so a convention that guesses wrong is a silent authorization hole rather than
+  a visible error. An unknown flag name throws at **import time** — the server won't boot on a
+  typo'd flag, which is deliberate.
+- **`requireScope` gates, it does not filter.** Routes with no project context
+  (`/reports/cashflow`, `/reports/ledger`, `GET /staff`, `GET /staff/:id`, `POST /payments/approve`)
+  degrade to "does this flag hold for at least one of the caller's projects". They still return
+  unfiltered rows, because `Report.helper.js` / `Staff.helper.js` / `Payment.helper.js` don't
+  read `req.scope` yet. Real gap — see doc 04 §3.1.
+- **`req.scope` key casing is snake_case for the arrays, camelCase for the scalars** —
+  `staffId` / `role` / `isGlobal`, but `memberships[].is_head`, `head_of`, `finance_of`,
+  `manager_of`, `departments`. Not a style choice: `GET /auth/me` returns `req.scope` verbatim
+  to the browser and `web/src/context/AuthContext.tsx` reads the snake_case names. Mock and
+  real mode emit the same shape — the real one adds `staff_dept_id`, `departments`, `staffId`,
+  `role`, `isGlobal`. Doc 04 §2 used to specify camelCase; it was corrected to match, not the
+  code.
+- **`GLOBAL_ROLES` env var** (`api/src/app/config/app.conf.js`) controls which roles get
+  `scope.isGlobal`. Defaults to `finance,owner,admin`. Exists because doc 04 §2 ("owner /
+  admin") and §3's matrix (finance can create/delete projects) genuinely disagreed.
+- **Scope is resolved per request and never cached or put in the JWT** (doc 04 §2) — a
+  revocation has to take effect immediately, not at the 15-minute token expiry.
+- **The session is memory + httpOnly cookie, by design.** The access token lives only in a
+  module closure in `web/src/lib/api/client.ts` (never localStorage — XSS would read it); the
+  durable half is the `refresh_token` cookie. `AuthContext` therefore *must* redeem that cookie
+  via `POST /auth/refresh` on boot before calling `/auth/me`, and re-arms a timer to rotate 60s
+  before the 900s expiry. Remove that boot call and every page reload becomes a logout.
+- **`web/src/lib/api/client.ts` sets `credentials: "include"`.** Without it the browser never
+  attaches the refresh cookie cross-origin and `/auth/refresh` always 401s. Pairs with the
+  API's `cors({ credentials: true })` and a concrete `CORS_ORIGIN` — a credentialed request
+  cannot use `Access-Control-Allow-Origin: *`.
+- **Refresh-cookie `SameSite` is derived from config, not `NODE_ENV`** — see
+  `resolveCrossSiteCookies()` in `api/src/app/config/app.conf.js`. Cross-site (Cloudflare ↔
+  Render) needs `SameSite=None; Secure`; plain-http localhost needs `Lax`. It keys off
+  `CORS_ORIGIN` vs `BASE_URL` because Render does not reliably set `NODE_ENV`, and the failure
+  mode is silent — the browser just drops the cookie. Override with `CROSS_SITE_COOKIES`.
+  `clearCookie` on logout must pass the *same* attributes or it won't match and won't clear.
+- **`npm run lint` in `web/` is broken** — it calls `next lint`, removed in Next 16. The
+  `eslint.config.mjs` also fails to load under eslint 9 (circular-structure error from the
+  eslintrc compat layer). `npx tsc --noEmit` works and is the usable check today.
