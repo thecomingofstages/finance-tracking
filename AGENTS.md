@@ -281,14 +281,24 @@ For human collaborators, see the per-folder READMEs and `docs/`.
 
 <!-- Agent: append new durable findings below this line. -->
 
-- **`resolveScope` is real as of 2026-08-08; `requireScope` is still a stub that throws.**
-  Both live in `api/src/app/middleware/Auth.middleware.js`. Before this, *both* did
+- **`resolveScope` and `requireScope` are both real as of 2026-08-08.** Both live in
+  `api/src/app/middleware/Auth.middleware.js`. Before this, *both* did
   `return next(new Error("... not wired up yet"))` in the non-mock branch — which meant that
   the moment `MOCK_MODE=false` shipped to Render, every authenticated route returned 500,
   because all 7 route files mount `resolveScope`. `GET /auth/me` 500ing is what made login
-  appear to silently fail in production. `requireScope` has the identical shape and still
-  throws, so the ~30 routes that mount it are still 500 under `MOCK_MODE=false`. Fixing it is
-  the next piece of work.
+  appear to silently fail in production. If you see a blanket 500 on authenticated routes
+  again, check these two first.
+- **`requireScope` takes an explicit target resolver at every call site** — all 28 of them, from
+  `api/src/app/utils/ScopeTarget.util.js`. Do not "simplify" this by inferring the target inside
+  the middleware: `req.params.id` is a project id on `/projects/:id` and a payment id on
+  `/payments/:id`, so a convention that guesses wrong is a silent authorization hole rather than
+  a visible error. An unknown flag name throws at **import time** — the server won't boot on a
+  typo'd flag, which is deliberate.
+- **`requireScope` gates, it does not filter.** Routes with no project context
+  (`/reports/cashflow`, `/reports/ledger`, `GET /staff`, `GET /staff/:id`, `POST /payments/approve`)
+  degrade to "does this flag hold for at least one of the caller's projects". They still return
+  unfiltered rows, because `Report.helper.js` / `Staff.helper.js` / `Payment.helper.js` don't
+  read `req.scope` yet. Real gap — see doc 04 §3.1.
 - **`req.scope` key casing is snake_case for the arrays, camelCase for the scalars** —
   `staffId` / `role` / `isGlobal`, but `memberships[].is_head`, `head_of`, `finance_of`,
   `manager_of`, `departments`. Not a style choice: `GET /auth/me` returns `req.scope` verbatim

@@ -86,14 +86,15 @@ Cache within the request only. If it becomes a measured bottleneck, a short-TTL 
 | Delete a project | `admin` | global |
 
 Expressed in routes as a declarative guard, so the rule is visible at the route definition rather
-than buried in a helper:
+than buried in a helper. The guard is `requireScope`, not `require` — a function literally named
+`require` shadows Node's own `require()` for the rest of the module:
 
 ```js
-router.post(
+projectSourcesRouter.post(
   "/:id/sources",
-  Auth.verifyJWT,
-  Auth.resolveScope,
-  Auth.require("isFinance", req => req.params.id),        // project id resolver
+  verifyJWT,
+  resolveScope,
+  requireScope("isFinance", Target.param()),              // project id resolver
   Validate.body(CreateSourceSchema),
   SourceController.create
 );
@@ -107,6 +108,48 @@ router.post(
   ReimbursementController.updateStatus
 );
 ```
+
+### 3.1 Flags and target resolution
+
+**Added 2026-08-08, when `requireScope` stopped being a stub.** The flags that actually appear
+at route definitions are wider than §2's scope object, because §3's matrix grants some
+capabilities to a *role* OR a local flag:
+
+| Flag | Passes when | Target |
+| --- | --- | --- |
+| `isHead` | `head_of` contains the target | **department** id |
+| `isFinance` | `finance_of` contains the target | project id |
+| `isManager` | `manager_of` contains the target | project id |
+| `isMember` | any membership matches | project **or** department id |
+| `isFinanceOrOwner` | `isFinance`, or `role === "owner"` | project id |
+| `isFinanceOrAdmin` | `isFinance`, or `role === "admin"` | project id |
+| `isManagerOrFinance` | `isManager` or `isFinance` | project id |
+| `isGlobal` | caller is in `GLOBAL_ROLES` | — |
+
+`scope.isGlobal` short-circuits every flag before the check runs. An unknown flag name throws at
+**import time**, so a typo stops the server booting rather than becoming a runtime 500 or, worse,
+a guard that quietly allows.
+
+Target resolvers live in `api/src/app/utils/ScopeTarget.util.js` and are named explicitly at each
+route rather than inferred, because `req.params.id` is a project id on `/projects/:id` and a
+payment id on `/payments/:id` — a convention that guesses wrong is a silent authorization hole,
+not a visible error. Four shapes:
+
+- `Target.param()` — the path param *is* the project id (`/projects/:id/…`).
+- `Target.query()` — it arrives as `?project_id=`. Absent resolves to `undefined`.
+- `Target.projectOfTag` / `projectOfDepartment` / `projectOfSource` / `projectOfPayment` — load
+  the row to find its owning project. A missing row is a real **404**, never a fallback.
+- `Target.anyProject` — the route has no project context at all (`POST /projects`,
+  `/reports/cashflow`, `GET /staff/:id`).
+
+An `undefined` target degrades to **"does this flag hold for at least one of the caller's
+projects"**. That is what keeps `/reports/cashflow` and `GET /staff` reachable by staff who
+aren't finance/owner/admin.
+
+> **Gate, not filter.** `requireScope` decides whether the request proceeds; it does not narrow
+> what comes back. On the any-project routes a manager of one project can still *see* rows from
+> another, because the list helpers don't yet filter by `req.scope`. Closing that means making
+> `Report.helper.js`, `Staff.helper.js` and `Payment.helper.js` scope-aware — tracked, not done.
 
 ## 4. Reimbursement state machine
 
