@@ -95,10 +95,12 @@ function LoginContent() {
           )}
 
           {activeTab === "claim" && (
+            /* No onSuccess: a successful claim already signs the user in, so the `user` effect
+             * above owns what happens next. Switching back to the login tab here would unmount
+             * this form mid-success and destroy the confirmation it just rendered. */
             <ClaimAccountForm
               initialToken={tokenParam}
               onBackToLogin={() => setActiveTab("login")}
-              onSuccess={() => setActiveTab("login")}
             />
           )}
 

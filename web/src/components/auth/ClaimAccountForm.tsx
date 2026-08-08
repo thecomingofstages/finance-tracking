@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { claimApi } from "@/lib/api/auth";
+import { useAuth } from "@/context/AuthContext";
 import { clearPendingToken, peekPendingToken } from "@/lib/auth/supabaseOAuth";
 
 export interface ClaimAccountFormProps {
@@ -15,6 +15,7 @@ export const ClaimAccountForm: React.FC<ClaimAccountFormProps> = ({
   onSuccess,
   onBackToLogin,
 }) => {
+  const { claimAccount } = useAuth();
   const [sessionToken, setSessionToken] = useState(initialToken);
   /** True when the Supabase token came from a link or the Google redirect rather than a paste,
    *  which is the only case where we hide the manual token field. */
@@ -64,31 +65,25 @@ export const ClaimAccountForm: React.FC<ClaimAccountFormProps> = ({
     setIsLoading(true);
 
     try {
-      const { response, error: apiError } = await claimApi(password, sessionToken.trim());
+      // claimAccount signs the user in with the session /auth/claim returns — the login page's
+      // own effect takes over from there (signature modal, then home). No bounce back to the
+      // login tab, and no retyping the password that was just set.
+      const result = await claimAccount(password, sessionToken.trim());
 
-      if (response.status === 404) {
-        setError("ไม่พบข้อมูลทีมงาน กรุณาติดต่อฝ่าย IT");
-        return;
-      }
-
-      if (response.status === 409) {
-        setError("บัญชีนี้ถูกตั้งรหัสผ่านไปแล้ว กรุณาใช้หน้าล็อกอินปกติ หรือติดต่อฝ่าย IT");
-        return;
-      }
-
-      if (!response.ok || apiError) {
-        const errObj = apiError as any;
-        const msg =
-          errObj?.error?.message ||
-          errObj?.message ||
-          "เกิดข้อผิดพลาดในการตั้งรหัสผ่าน กรุณาติดต่อฝ่าย IT";
-        setError(msg);
+      if (!result.success) {
+        if (result.code === "NOT_PROVISIONED") {
+          setError("ไม่พบข้อมูลทีมงาน กรุณาติดต่อฝ่าย IT");
+        } else if (result.code === "ALREADY_CLAIMED") {
+          setError("บัญชีนี้ถูกตั้งรหัสผ่านไปแล้ว กรุณาใช้หน้าล็อกอินปกติ หรือติดต่อฝ่าย IT");
+        } else {
+          setError(result.error || "เกิดข้อผิดพลาดในการตั้งรหัสผ่าน กรุณาติดต่อฝ่าย IT");
+        }
         return;
       }
 
       // Consumed — don't leave a live Supabase token in sessionStorage for the rest of the tab.
       clearPendingToken();
-      setSuccessMessage("ตั้งรหัสผ่านเรียบร้อยแล้ว กรุณาเข้าสู่ระบบด้วยรหัสผ่านใหม่");
+      setSuccessMessage("ตั้งรหัสผ่านเรียบร้อยแล้ว กำลังเข้าสู่ระบบ...");
       onSuccess?.();
     } catch {
       setError("เกิดข้อผิดพลาดในการเชื่อมต่อระบบ กรุณาติดต่อฝ่าย IT");

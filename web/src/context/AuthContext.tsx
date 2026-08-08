@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from "react";
 import {
+  claimApi,
   getMeApi,
   loginApi,
   loginViaSupabaseApi,
@@ -53,6 +54,8 @@ export interface AuthContextType {
   login: (email: string, password: string) => Promise<LoginResult>;
   /** Trades a Supabase Auth access token (from the Google redirect) for one of our sessions. */
   loginWithSupabase: (supabaseAccessToken: string) => Promise<LoginResult>;
+  /** First login: sets the password and signs the user in with the session /auth/claim returns. */
+  claimAccount: (password: string, supabaseAccessToken: string) => Promise<LoginResult>;
   logout: () => Promise<void>;
 }
 
@@ -236,6 +239,43 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  /**
+   * First login. POST /auth/claim doesn't just set the password — it returns a full session
+   * (201), exactly like login does. That session used to be thrown away, so a user who had just
+   * proved their identity through Google and chosen a password was dropped back onto a blank
+   * login form to type that password in again. Now the claim signs them in directly.
+   *
+   * Error codes rather than statuses: NOT_PROVISIONED (no staff row) and ALREADY_CLAIMED
+   * (password already set) both need distinct guidance, and the codes are stable where the
+   * 404/409 pairing is incidental.
+   */
+  const claimAccount = async (
+    password: string,
+    supabaseAccessToken: string
+  ): Promise<LoginResult> => {
+    try {
+      const { data, error, response } = await claimApi(password, supabaseAccessToken);
+
+      if (error || !response.ok) {
+        const errObj = error as any;
+        return {
+          success: false,
+          code: errObj?.error?.code,
+          error: errObj?.error?.message,
+        };
+      }
+
+      applySession(data);
+      await refreshUser();
+      return { success: true };
+    } catch (err: any) {
+      return {
+        success: false,
+        error: err?.message || "เกิดข้อผิดพลาดในการเชื่อมต่อระบบ กรุณาติดต่อฝ่าย IT",
+      };
+    }
+  };
+
   const logout = async () => {
     clearRefreshTimer();
     // Clears the httpOnly cookie server-side. Without this the next page load would silently
@@ -252,7 +292,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, isLoading, refreshUser, login, loginWithSupabase, logout }}
+      value={{ user, isLoading, refreshUser, login, loginWithSupabase, claimAccount, logout }}
     >
       {children}
     </AuthContext.Provider>
