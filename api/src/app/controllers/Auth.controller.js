@@ -1,14 +1,35 @@
 const asyncHandler = require("../utils/asyncHandler.util");
 const { ok, created, noContent } = require("../utils/Response.util");
 const Auth = require("../helpers/Auth.helper");
+const { app: appConf } = require("../config/init");
+
+/**
+ * The frontend and the API are on different registrable domains in every deployed environment
+ * (Cloudflare Workers ↔ Render), which makes every API call cross-site. SameSite=Strict meant
+ * the browser never stored this cookie at all, so POST /auth/refresh could never work and a
+ * page reload was an unrecoverable logout.
+ *
+ * SameSite=None is the only value a cross-site cookie can have, and browsers require Secure
+ * alongside it. Locally there is no cross-site problem and no TLS, so Lax is both sufficient
+ * and the only thing that works over plain http. appConf derives which case applies from the
+ * configured origins — see resolveCrossSiteCookies() in config/app.conf.js.
+ */
+const REFRESH_COOKIE = "refresh_token";
+const refreshCookieOptions = {
+  httpOnly: true,
+  secure: appConf.crossSiteCookies,
+  sameSite: appConf.crossSiteCookies ? "none" : "lax",
+  path: "/",
+};
 
 const setRefreshCookie = (res, token) =>
-  res.cookie("refresh_token", token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "strict",
+  res.cookie(REFRESH_COOKIE, token, {
+    ...refreshCookieOptions,
     maxAge: 7 * 24 * 60 * 60 * 1000,
   });
+
+/** clearCookie only matches a cookie whose attributes agree — same options, minus maxAge. */
+const clearRefreshCookie = (res) => res.clearCookie(REFRESH_COOKIE, refreshCookieOptions);
 
 /** #57/#58 carry a Supabase Auth session token, not one of our own Bearer access tokens —
  *  verifyJWT (which expects OUR RS256 tokens) is deliberately not mounted on these two routes,
@@ -41,7 +62,7 @@ exports.loginViaSupabase = asyncHandler(async (req, res) => {
 });
 
 exports.logout = asyncHandler(async (req, res) => {
-  res.clearCookie("refresh_token");
+  clearRefreshCookie(res);
   return noContent(res);
 });
 

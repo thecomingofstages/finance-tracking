@@ -311,3 +311,21 @@ For human collaborators, see the per-folder READMEs and `docs/`.
   admin") and §3's matrix (finance can create/delete projects) genuinely disagreed.
 - **Scope is resolved per request and never cached or put in the JWT** (doc 04 §2) — a
   revocation has to take effect immediately, not at the 15-minute token expiry.
+- **The session is memory + httpOnly cookie, by design.** The access token lives only in a
+  module closure in `web/src/lib/api/client.ts` (never localStorage — XSS would read it); the
+  durable half is the `refresh_token` cookie. `AuthContext` therefore *must* redeem that cookie
+  via `POST /auth/refresh` on boot before calling `/auth/me`, and re-arms a timer to rotate 60s
+  before the 900s expiry. Remove that boot call and every page reload becomes a logout.
+- **`web/src/lib/api/client.ts` sets `credentials: "include"`.** Without it the browser never
+  attaches the refresh cookie cross-origin and `/auth/refresh` always 401s. Pairs with the
+  API's `cors({ credentials: true })` and a concrete `CORS_ORIGIN` — a credentialed request
+  cannot use `Access-Control-Allow-Origin: *`.
+- **Refresh-cookie `SameSite` is derived from config, not `NODE_ENV`** — see
+  `resolveCrossSiteCookies()` in `api/src/app/config/app.conf.js`. Cross-site (Cloudflare ↔
+  Render) needs `SameSite=None; Secure`; plain-http localhost needs `Lax`. It keys off
+  `CORS_ORIGIN` vs `BASE_URL` because Render does not reliably set `NODE_ENV`, and the failure
+  mode is silent — the browser just drops the cookie. Override with `CROSS_SITE_COOKIES`.
+  `clearCookie` on logout must pass the *same* attributes or it won't match and won't clear.
+- **`npm run lint` in `web/` is broken** — it calls `next lint`, removed in Next 16. The
+  `eslint.config.mjs` also fails to load under eslint 9 (circular-structure error from the
+  eslintrc compat layer). `npx tsc --noEmit` works and is the usable check today.

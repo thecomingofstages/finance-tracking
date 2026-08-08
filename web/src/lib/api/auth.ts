@@ -36,6 +36,20 @@ export async function loginViaSupabaseApi(supabaseAccessToken: string) {
 }
 
 /**
+ * Rotate the access token using the httpOnly refresh_token cookie (POST /auth/refresh).
+ * Sends no Bearer header by design — the cookie is the whole credential. A 401 here is the
+ * normal "not signed in" answer, not an error worth surfacing.
+ */
+export async function refreshSessionApi() {
+  return await api.POST("/auth/refresh");
+}
+
+/** Clear the refresh cookie server-side (POST /auth/logout). */
+export async function logoutApi() {
+  return await api.POST("/auth/logout");
+}
+
+/**
  * Get current staff profile & scope (GET /auth/me)
  */
 export async function getMeApi() {

@@ -1,7 +1,13 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
-import { getMeApi, loginApi, loginViaSupabaseApi } from "../lib/api/auth";
+import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from "react";
+import {
+  getMeApi,
+  loginApi,
+  loginViaSupabaseApi,
+  logoutApi,
+  refreshSessionApi,
+} from "../lib/api/auth";
 import { setAccessToken } from "../lib/api/client";
 
 export interface ScopeMembership {
@@ -82,6 +88,55 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     },
   };
 
+  /**
+   * The access token lives in memory only (see lib/api/client.ts) — deliberately, so it never
+   * lands in localStorage where any XSS can read it. The durable half of the session is the
+   * httpOnly refresh_token cookie, which means every fresh page load has to trade that cookie
+   * for a new access token before it can do anything. Nothing did that before, so a reload was
+   * an unrecoverable logout even though the cookie was still perfectly valid.
+   */
+  const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearRefreshTimer = () => {
+    if (refreshTimer.current) {
+      clearTimeout(refreshTimer.current);
+      refreshTimer.current = null;
+    }
+  };
+
+  /** Access tokens live 900s. Rotate a minute early so an in-flight request never straddles
+   *  the expiry; the floor keeps a surprisingly short expires_in from becoming a busy loop. */
+  const scheduleRefresh = (expiresIn?: number) => {
+    clearRefreshTimer();
+    const seconds = typeof expiresIn === "number" && expiresIn > 0 ? expiresIn : 900;
+    refreshTimer.current = setTimeout(
+      () => { void rotateSession(); },
+      Math.max(seconds - 60, 30) * 1000
+    );
+  };
+
+  /** Pulls the access token out of a session envelope and arms the next rotation. */
+  const applySession = (payload: unknown): boolean => {
+    const body = payload as any;
+    const session = body?.data ?? body;
+    const accessToken = session?.access_token;
+    if (!accessToken) return false;
+    setAccessToken(accessToken);
+    scheduleRefresh(session?.expires_in);
+    return true;
+  };
+
+  /** Trades the refresh cookie for a new access token. A 401 just means "not signed in". */
+  const rotateSession = async (): Promise<boolean> => {
+    try {
+      const { data, response } = await refreshSessionApi();
+      if (!response.ok) return false;
+      return applySession(data);
+    } catch {
+      return false;
+    }
+  };
+
   const refreshUser = async () => {
     try {
       const { data, error } = await getMeApi();
@@ -108,8 +163,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  // Boot: redeem the refresh cookie first, then load the profile. rotateSession() is a no-op
+  // when there's no cookie, so a genuinely signed-out visitor just falls through to a null user.
   useEffect(() => {
-    refreshUser();
+    let cancelled = false;
+    (async () => {
+      await rotateSession();
+      if (!cancelled) await refreshUser();
+    })();
+    return () => {
+      cancelled = true;
+      clearRefreshTimer();
+    };
   }, []);
 
   const login = async (email: string, password: string) => {
@@ -124,12 +189,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { success: false, error: errorMessage };
       }
 
-      const resData = data as any;
-      const accessToken = resData?.data?.access_token || resData?.access_token;
-
-      if (accessToken) {
-        setAccessToken(accessToken);
-      }
+      applySession(data);
 
       await refreshUser();
       return { success: true };
@@ -164,12 +224,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         };
       }
 
-      const resData = data as any;
-      const accessToken = resData?.data?.access_token || resData?.access_token;
-
-      if (accessToken) {
-        setAccessToken(accessToken);
-      }
+      applySession(data);
 
       await refreshUser();
       return { success: true };
@@ -182,6 +237,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = async () => {
+    clearRefreshTimer();
+    // Clears the httpOnly cookie server-side. Without this the next page load would silently
+    // sign the user straight back in off a cookie that outlived the "logout".
+    try {
+      await logoutApi();
+    } catch {
+      // Network failure shouldn't trap someone in a session they asked to leave — drop the
+      // local half regardless.
+    }
     setAccessToken(null);
     setUser(null);
   };
