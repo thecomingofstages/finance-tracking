@@ -20,7 +20,7 @@ function LoginContent() {
    *  token itself travels in sessionStorage, not the URL — ClaimAccountForm picks it up. */
   const isClaimMode = searchParams.get("mode") === "claim";
 
-  const { user, isLoading, refreshUser } = useAuth();
+  const { user, isLoading, authError, refreshUser } = useAuth();
   const [activeTab, setActiveTab] = useState<ActiveTab>(() =>
     tokenParam || isClaimMode ? "claim" : "login"
   );
@@ -69,6 +69,31 @@ function LoginContent() {
             </p>
           </div>
         </div>
+
+        {/* Backend is unreachable or erroring — distinct from "your password was wrong", which
+            the forms report themselves. Without this the page looks identical to a normal
+            signed-out visit, which is how a 500 on /auth/me read as "login is broken". */}
+        {authError && (
+          <div
+            role="alert"
+            className="p-3 rounded-xl text-xs bg-amber-50 text-amber-900 border border-amber-200/80 flex items-start gap-2"
+          >
+            <svg
+              className="w-4 h-4 flex-shrink-0 mt-px"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 9v2m0 4h.01M5.07 19h13.86c1.54 0 2.5-1.67 1.73-3L13.73 4c-.77-1.33-2.69-1.33-3.46 0L3.34 16c-.77 1.33.19 3 1.73 3z"
+              />
+            </svg>
+            <span>{authError.message}</span>
+          </div>
+        )}
 
         {/* Mode Title Indicator */}
         {activeTab === "claim" && (

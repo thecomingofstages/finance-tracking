@@ -39,6 +39,16 @@ export interface AuthUser {
   scope?: Scope;
 }
 
+/**
+ * Why /auth/me couldn't be loaded, when the reason is *not* "signed out". Consumers render
+ * this so a broken backend is distinguishable from a missing session.
+ */
+export interface AuthError {
+  kind: "server" | "network";
+  status?: number;
+  message: string;
+}
+
 export interface LoginResult {
   success: boolean;
   error?: string;
@@ -50,6 +60,8 @@ export interface LoginResult {
 export interface AuthContextType {
   user: AuthUser | null;
   isLoading: boolean;
+  /** Non-null when the last profile load failed for a reason other than being signed out. */
+  authError: AuthError | null;
   refreshUser: () => Promise<void>;
   login: (email: string, password: string) => Promise<LoginResult>;
   /** Trades a Supabase Auth access token (from the Google redirect) for one of our sessions. */
@@ -64,6 +76,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [authError, setAuthError] = useState<AuthError | null>(null);
 
   const MOCK_DEV_USER: AuthUser = {
     _id: "018f6a2e-dev-admin",
@@ -140,27 +153,55 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  /** Signed out is not a failure. Anything else is, and must not look like being signed out. */
+  const clearUser = () => {
+    // Fallback to Mock Dev User ONLY in development mode so preview works without logging in.
+    setUser(process.env.NODE_ENV === "development" ? MOCK_DEV_USER : null);
+  };
+
+  /**
+   * Loads the current profile.
+   *
+   * The distinction that matters here is 401 vs everything else. This used to collapse every
+   * unusable response — 500, network failure, malformed body — into setUser(null), which
+   * renders identically to being signed out: a silent bounce to /login with no error and no
+   * log. That is exactly how a server-side 500 on /auth/me masqueraded as "login doesn't
+   * work" in production. A broken server must look broken.
+   */
   const refreshUser = async () => {
     try {
-      const { data, error } = await getMeApi();
-      if (data && data.success && data.data) {
-        setUser(data.data as AuthUser);
-      } else if (data && !("success" in data) && (data as any)._id) {
+      const { data, response } = await getMeApi();
+
+      if (response.ok && data && (data as any).success && (data as any).data) {
+        setAuthError(null);
+        setUser((data as any).data as AuthUser);
+        return;
+      }
+      if (response.ok && data && !("success" in (data as object)) && (data as any)._id) {
+        setAuthError(null);
         setUser(data as AuthUser);
-      } else {
-        // Fallback to Mock Dev User ONLY in development mode so preview works without logging in
-        if (process.env.NODE_ENV === "development") {
-          setUser(MOCK_DEV_USER);
-        } else {
-          setUser(null);
-        }
+        return;
       }
-    } catch {
-      if (process.env.NODE_ENV === "development") {
-        setUser(MOCK_DEV_USER);
-      } else {
-        setUser(null);
+
+      if (response.status === 401 || response.status === 403) {
+        setAuthError(null);
+        clearUser();
+        return;
       }
+
+      const message = response.ok
+        ? "เซิร์ฟเวอร์ตอบกลับในรูปแบบที่ไม่รู้จัก กรุณาติดต่อฝ่าย IT"
+        : `ระบบขัดข้องชั่วคราว (${response.status}) กรุณาลองใหม่อีกครั้ง หรือติดต่อฝ่าย IT`;
+      console.error(`[auth] GET /auth/me failed with ${response.status}`, data);
+      setAuthError({ kind: "server", status: response.status, message });
+      clearUser();
+    } catch (err) {
+      console.error("[auth] GET /auth/me could not be reached", err);
+      setAuthError({
+        kind: "network",
+        message: "เชื่อมต่อเซิร์ฟเวอร์ไม่สำเร็จ กรุณาตรวจสอบอินเทอร์เน็ต หรือติดต่อฝ่าย IT",
+      });
+      clearUser();
     } finally {
       setIsLoading(false);
     }
@@ -288,11 +329,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     setAccessToken(null);
     setUser(null);
+    setAuthError(null);
   };
 
   return (
     <AuthContext.Provider
-      value={{ user, isLoading, refreshUser, login, loginWithSupabase, claimAccount, logout }}
+      value={{
+        user,
+        isLoading,
+        authError,
+        refreshUser,
+        login,
+        loginWithSupabase,
+        claimAccount,
+        logout,
+      }}
     >
       {children}
     </AuthContext.Provider>
