@@ -280,3 +280,24 @@ For human collaborators, see the per-folder READMEs and `docs/`.
   math; never use raw `Number` for currency.
 
 <!-- Agent: append new durable findings below this line. -->
+
+- **`resolveScope` is real as of 2026-08-08; `requireScope` is still a stub that throws.**
+  Both live in `api/src/app/middleware/Auth.middleware.js`. Before this, *both* did
+  `return next(new Error("... not wired up yet"))` in the non-mock branch — which meant that
+  the moment `MOCK_MODE=false` shipped to Render, every authenticated route returned 500,
+  because all 7 route files mount `resolveScope`. `GET /auth/me` 500ing is what made login
+  appear to silently fail in production. `requireScope` has the identical shape and still
+  throws, so the ~30 routes that mount it are still 500 under `MOCK_MODE=false`. Fixing it is
+  the next piece of work.
+- **`req.scope` key casing is snake_case for the arrays, camelCase for the scalars** —
+  `staffId` / `role` / `isGlobal`, but `memberships[].is_head`, `head_of`, `finance_of`,
+  `manager_of`, `departments`. Not a style choice: `GET /auth/me` returns `req.scope` verbatim
+  to the browser and `web/src/context/AuthContext.tsx` reads the snake_case names. Mock and
+  real mode emit the same shape — the real one adds `staff_dept_id`, `departments`, `staffId`,
+  `role`, `isGlobal`. Doc 04 §2 used to specify camelCase; it was corrected to match, not the
+  code.
+- **`GLOBAL_ROLES` env var** (`api/src/app/config/app.conf.js`) controls which roles get
+  `scope.isGlobal`. Defaults to `finance,owner,admin`. Exists because doc 04 §2 ("owner /
+  admin") and §3's matrix (finance can create/delete projects) genuinely disagreed.
+- **Scope is resolved per request and never cached or put in the JWT** (doc 04 §2) — a
+  revocation has to take effect immediately, not at the 15-minute token expiry.

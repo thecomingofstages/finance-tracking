@@ -23,17 +23,41 @@ the sole gate on a route.
 ```js
 req.scope = {
   staffId:    "018f...",
-  role:       "finance",            // global label from STAFF
+  role:       "finance",            // global label, read from the JWT payload
+  isGlobal:   false,                // see "Which roles are global?" below
   memberships: [                    // live STAFF_DEPT rows, joined up to project
-    { staffDeptId, departmentId, projectId, isHead, isFinance, isManager }
+    { staff_dept_id, project_id, project_name, department_id, department_name,
+      is_head, is_finance, is_manager }
   ],
-  departments: ["018d..."],         // flattened, for fast membership checks
-  headOf:      ["018d..."],         // department ids
-  financeOf:   ["018e..."],         // project ids
-  managerOf:   ["018e..."],         // project ids
-  isGlobal:    false,               // true for owner / admin
+  departments: ["018d..."],         // flattened department ids, for fast membership checks
+  head_of:     ["018d..."],         // department ids
+  finance_of:  ["018e..."],         // project ids
+  manager_of:  ["018e..."],         // project ids
 }
 ```
+
+**Corrected 2026-08-08.** This block previously specified camelCase `headOf` / `financeOf` /
+`managerOf` and `memberships[].isHead`. That was never what shipped: `src/mocks/fixtures.js`
+`scope()` has always emitted snake_case arrays and snake_case membership flags, and
+`GET /auth/me` hands `req.scope` straight to the browser, where
+`web/src/context/AuthContext.tsx`'s `Scope` interface reads those snake_case names. The real
+(non-mock) implementation matches the shipped wire format, and this doc has been corrected to
+it rather than the other way round. Top-level `staffId` / `role` / `isGlobal` stay camelCase —
+they are server-side plumbing, and `Reimbursement.controller.js` already reads `scope.staffId`.
+
+**`is_finance` and `is_manager` are stored per (staff, department) row but resolve to project
+ids.** Being finance of any one department promotes you to finance of that whole project, which
+is how §3's matrix reads ("approve payments — `isFinance` — that project"). `is_head` stays
+department-scoped. Same tension already noted at `Reimbursement.helper.js:16`; this is where it
+gets resolved.
+
+**Which roles are global?** §2 used to say "true for owner / admin" while §3's matrix grants
+`finance` global project create/delete. Rather than silently pick a side, the set is
+configurable via the `GLOBAL_ROLES` env var (`api/src/app/config/app.conf.js`), defaulting to
+`finance,owner,admin` — §3's reading, and what MOCK_MODE has always returned.
+
+Memberships whose department or project has been soft-deleted are excluded (INNER JOIN), as are
+`staff_dept` rows with a `deleted_at` leave time.
 
 **Scope is resolved per request, never stored in the JWT.** If it lived in the token, promoting
 someone to head of department wouldn't take effect until their access token expired — and, worse,
