@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "c7a2d9e1-4b6f-4a1e-9c2d-tcos-staff-0001",
     "name": "TCOS Finance Tracking — Admin Staff (chompoo)",
-    "description": "The 4 admin staff endpoints — POST /admin/staff, POST /admin/staff/import, PATCH /admin/staff/:id, DELETE /admin/staff/:id. See docs/backend/03-api-spec.md §5.\n\nSelf-contained: includes its own Login request so this collection runs standalone without needing the Auth collection open too. Run order: 1. Login (admin) → 2 → 3 → 4 → 5, in that order — Create Staff sets `created_staff_id`, which Update/Delete then reuse.\n\nAll 4 routes require `requireRole(\"admin\")` — real, checked straight off the JWT (not the mock-gated scope system) — so the logged-in account must actually have role `admin`. The default `admin_email` below already does.",
+    "description": "For a single unattended Collection Runner pass across ALL domains, use `TCOS-Full-Suite.postman_collection.json` instead.\n\nThe 4 admin staff endpoints — POST /admin/staff, POST /admin/staff/import, PATCH /admin/staff/:id, DELETE /admin/staff/:id. See docs/backend/03-api-spec.md §5.\n\nSelf-contained: includes its own Login request so this collection runs standalone without needing the Auth collection open too. Run order: 1. Login (admin) → 2 → 3 → 4 → 5, in that order — Create Staff sets `created_staff_id`, which Update/Delete then reuse.\n\nAll 4 routes require `requireRole(\"admin\")` — real, checked straight off the JWT (not the mock-gated scope system) — so the logged-in account must actually have role `admin`. The default `admin_email` below already does.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
