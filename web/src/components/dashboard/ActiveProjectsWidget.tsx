@@ -2,6 +2,7 @@
 
 import React from "react";
 import Link from "next/link";
+import { formatCurrencyTH } from "@/lib/format";
 
 export interface ProjectItem {
   _id: string;
@@ -15,14 +16,6 @@ export interface ActiveProjectsWidgetProps {
   projects?: ProjectItem[];
   isLoading?: boolean;
 }
-
-const formatCurrency = (val?: number): string => {
-  const amount = val ?? 0;
-  return `฿${amount.toLocaleString("th-TH", {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  })}`;
-};
 
 export const ActiveProjectsWidget: React.FC<ActiveProjectsWidgetProps> = ({
   projects = [],
@@ -106,7 +99,7 @@ export const ActiveProjectsWidget: React.FC<ActiveProjectsWidgetProps> = ({
                   {/* Budget & Expense info */}
                   <div className="mt-3 flex items-center justify-between text-[11px] font-medium text-slate-500">
                     <span>
-                      ใช้ไป <span className="font-bold text-slate-700">{formatCurrency(actual)}</span> / {formatCurrency(allocated)}
+                      ใช้ไป <span className="font-bold text-slate-700">{formatCurrencyTH(actual, 0)}</span> / {formatCurrencyTH(allocated, 0)}
                     </span>
                     <span
                       className={`font-bold ${

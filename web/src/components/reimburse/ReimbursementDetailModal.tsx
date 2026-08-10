@@ -5,6 +5,7 @@ import { useAuth } from "@/context/AuthContext";
 import StatusBadge from "./StatusBadge";
 import { updateReimbursementStatusApi } from "@/lib/api/reimbursements";
 import { verifyPasswordApi } from "@/lib/api/auth";
+import { formatCurrencyTH } from "@/lib/format";
 
 export interface ReimbursementDetailModalProps {
   isOpen: boolean;
@@ -56,10 +57,7 @@ export const ReimbursementDetailModal: React.FC<ReimbursementDetailModalProps> =
     amount = item.details.reduce((sum: number, d: any) => sum + (Number(d.amount) || 0), 0);
   }
 
-  const formattedAmount = `฿${amount.toLocaleString("th-TH", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`;
+  const formattedAmount = formatCurrencyTH(amount, 2);
 
   const projectName =
     item.project_name || item.project?.name || item.project_code || "โครงการทั่วไป";

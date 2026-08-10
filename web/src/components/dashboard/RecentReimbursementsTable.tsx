@@ -3,14 +3,15 @@
 import React from "react";
 import Link from "next/link";
 import StatusBadge from "@/components/reimburse/StatusBadge";
+import { formatCurrencyTH, formatDateTH } from "@/lib/format";
 
 export interface ReimbursementItem {
   _id: string;
   tracking_id?: string;
   title: string;
-  amount: number;
+  amount?: number;
   status: string;
-  created_at: string;
+  created_at?: string;
   department_name?: string;
 }
 
@@ -18,29 +19,6 @@ export interface RecentReimbursementsTableProps {
   items?: ReimbursementItem[];
   isLoading?: boolean;
 }
-
-
-
-const formatCurrency = (amount: number): string => {
-  return `฿${amount.toLocaleString("th-TH", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`;
-};
-
-const formatDate = (dateString: string): string => {
-  try {
-    const d = new Date(dateString);
-    if (isNaN(d.getTime())) return dateString;
-    return d.toLocaleDateString("th-TH", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    });
-  } catch {
-    return dateString;
-  }
-};
 
 export const RecentReimbursementsTable: React.FC<
   RecentReimbursementsTableProps
@@ -124,13 +102,13 @@ export const RecentReimbursementsTable: React.FC<
                       {item.department_name || "-"}
                     </td>
                     <td className="whitespace-nowrap px-3 py-4 text-right font-bold font-mono text-slate-900">
-                      {formatCurrency(item.amount)}
+                      {formatCurrencyTH(item.amount, 2)}
                     </td>
                     <td className="whitespace-nowrap px-3 py-4 text-center">
                       <StatusBadge status={item.status} />
                     </td>
                     <td className="whitespace-nowrap px-3 py-4 text-right text-xs text-slate-400 hidden sm:table-cell">
-                      {formatDate(item.created_at)}
+                      {formatDateTH(item.created_at)}
                     </td>
                     <td className="whitespace-nowrap px-3 py-4 text-right text-xs">
                       <Link

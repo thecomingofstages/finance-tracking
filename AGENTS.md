@@ -182,9 +182,37 @@ For human collaborators, see the per-folder READMEs and `docs/`.
   `api` + `setAccessToken()`. **Important:** `setAccessToken` calls
   `api.eject(prev)` before re-registering middleware, because `api.use()`
   accumulates indefinitely. Do not "fix" that — the eject is intentional.
-- The default `web/src/app/page.tsx` is still the `create-next-app` starter
-  page. Treat it as unstarted UI work, not the real home page.
+- The default `web/src/app/page.tsx` is the real dashboard (StatCards +
+  ActiveProjectsWidget + RecentReimbursementsTable), served behind the auth
+  layout at `/`. Reads `getSummaryApi` / `getProjectsApi` /
+  `getReimbursementsApi` and falls back to hardcoded defaults while in
+  flight.
 - `web/src/lib/api/types.gen.ts` is generated; do not hand-edit.
+- **Shared formatters live in `web/src/lib/format.ts`.** `formatCurrencyTH`,
+  `formatIntegerTH`, and `formatDateTH` accept `number | string | null |
+  undefined` and coerce missing/garbage values to `0` / `"-"` instead of
+  throwing on `.toLocaleString`. All dashboard and reimburse components
+  import from here — do not reintroduce per-component `formatCurrency`
+  helpers. Adding a new dashboard widget? Route money/dates through this
+  module, even if your data looks clean.
+- **Post-login routing lives only in `web/src/app/login/page.tsx`.**
+  `AuthCallbackPage` (`app/auth/callback/page.tsx`) deliberately
+  `router.replace("/login")` after both successful exchange and
+  `ACCOUNT_NOT_CLAIMED` — `/login` owns the "open signature modal if
+  missing, otherwise `router.push("/")`" decision via its `useEffect`
+  on `[user, isLoading, router]`. The `ClaimAccountForm.onSuccess`
+  callback only switches the tab back to login; it does NOT navigate.
+  If a user "lands back on the login page after setting a password",
+  that is the design — not a bug. Do not add parallel `router.push("/")`
+  calls in `LoginForm.onSuccess` or `ClaimAccountForm.onSuccess`.
+- **API summary contract gap (TODO):** `api/src/app/helpers/Report.helper.js`
+  returns the same fixed mock object regardless of `MOCK_MODE` —
+  `{ total_income, total_expense, net_income, allocated_budget, … }` —
+  and never includes `net_cashflow` or `pending_count`, which the dashboard
+  reads. The FE papers over this with `??` defaults + the defensive
+  formatters above. When `Report.summary` is real-ified, make sure it
+  returns the FE-expected field names (`net_cashflow`, `pending_count`)
+  rather than the FE being asked to rename them.
 - **Google sign-in does not create a Supabase-backed session.** Supabase Auth is
   only an identity handshake: `web/src/lib/auth/supabaseOAuth.ts` redirects to
   `/auth/v1/authorize`, `web/src/app/auth/callback/page.tsx` reads the token out

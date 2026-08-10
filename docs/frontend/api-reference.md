@@ -545,6 +545,17 @@ approval chain; this isn't a shortcut around approval, just around re-typing.
     "by_tag": [ /* ... */ ], "by_department": [ /* ... */ ] } }
 ```
 
+> **TODO contract gap (2026-08-10):** the dashboard
+> (`web/src/app/page.tsx` → `StatCards`) reads `total_income`,
+> `total_expense`, **`net_cashflow`**, and **`pending_count`** — none of which
+> the response above contains. The current `api/src/app/helpers/Report.helper.js`
+> returns the mock shape above verbatim regardless of `MOCK_MODE`, and the FE
+> papers over the gap with `??` defaults + the defensive formatters in
+> `web/src/lib/format.ts` (so the page still renders). When the helper is
+> real-ified, return the four fields above with names that match what the
+> dashboard reads (`net_cashflow`, not `net_income`; `pending_count`,
+> not `pending_slips.count`) — or coordinate the rename on both sides.
+
 ### `GET /reports/cashflow` — `/` page breakdown
 **Auth:** finance, owner. Income by source type, expense by department and tag, a monthly time
 series, and budget-vs-actual per department — everything the dashboard chart needs in one call.
