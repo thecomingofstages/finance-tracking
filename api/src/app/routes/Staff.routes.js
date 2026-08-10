@@ -8,9 +8,16 @@ const schema = require("../schemas/Staff.schema");
 const router = Router();
 const auth = [verifyJWT, resolveScope];
 
-// #7
+// #7 — no :id here, so the default target resolves to undefined -> requireScope's coarse
+// fallback ("isManager of any project at all"). Real once Staff.helper.js#list stops mocking.
 router.get("/", ...auth, requireScope("isManager"), ctrl.list);
-// #8
+// #8 — TODO: :id here is the TARGET STAFF member's id, not a project id. requireScope's default
+// resolver (req.params.id) is wrong for this route — it'd check a staff id against managerOf's
+// list of PROJECT ids, which will never match, so this always 403s once MOCK_MODE=false. Needs
+// a real resolver checking whether the caller manages ANY project the target staff belongs to
+// (StaffDept lookup on the target, intersected with the caller's managerOf) — left as a real,
+// flagged gap rather than guessed at, since #7/#8 (and their still-mocked Staff.helper.js
+// bodies) aren't this branch's endpoints.
 router.get("/:id", ...auth, requireScope("isManager"), ctrl.getById);
 // #9
 router.patch("/me", ...auth, Validate.body(schema.updateSelf), ctrl.updateSelf);
@@ -25,8 +32,8 @@ router.delete("/me/bank-accounts/:id", ...auth, ctrl.removeBankAccount);
 router.post("/me/signature", ...auth, requireReauth, upload.signature, ctrl.uploadSignature);
 
 // #10-13 — admin-only, mounted under /v1/admin/staff in routes/init.js. requireRole("admin")
-// is real (straight off the JWT, doc 03 §5 step 1) — not requireScope("isGlobal"), which is
-// broader (finance/owner/admin too) and still mock-gated pending the StaffDept scope system.
+// on purpose, not requireScope("isGlobal") — the latter is broader (finance/owner/admin too;
+// real now as of this pass, but still the wrong flag for a route the spec says is admin-only).
 const adminRouter = Router();
 adminRouter.post("/", ...auth, requireRole("admin"), Validate.body(schema.adminCreate), ctrl.adminCreate);
 // #11 — multipart, no Validate.body, same reasoning as #60 above.

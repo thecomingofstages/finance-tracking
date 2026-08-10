@@ -1,0 +1,768 @@
+{
+  "info": {
+    "_postman_id": "f1a9c3e2-7d4b-4a8e-9c1f-tcos-fullsuite-01",
+    "name": "TCOS Finance Tracking — Full Suite (Runner)",
+    "description": "Consolidates the 4 domain collections (Auth, Admin Staff, Project & Source, Payments & Reimbursement Approval) into one collection that runs start-to-finish in a single Postman Collection Runner pass, in dependency order.\n\n**Excluded on purpose**: every Supabase-Auth-dependent request (Claim, Login via Supabase, the \"Get Supabase session\" dev helper) — those need a manually-provisioned external Supabase Auth user and can't run unattended. They still live in `TCOS-Auth.postman_collection.json` if you need them.\n\n**Two more real, unavoidable gaps in unattended runs** (both pre-existing limitations of the individual collections too, not new here):\n1. **Reset Password** needs a `reset_token` copied out of the API server's console log (no email provider wired up, no token returned via the API by design) — it will 400 on a cold run unless you paste one in first. Non-fatal to the rest of the run either way.\n2. **CSV imports** (Staff Import, Reimbursement Import) need a real file attached to the request's Body tab — Postman collection JSON can't embed a file. They'll 400 \"file required\" on an unattended run. Attach `api/tests/fixtures/staff-import.csv` / a reimbursement CSV manually before running those two requests specifically if you want them to pass.\n\nEverything else runs clean end-to-end with zero manual setup beyond a reachable Postgres (the hosted Supabase project is already live) with the seed data applied. Folder order matters — it mirrors real domain dependencies (Payments & Reimbursements needs real staff/department/project rows that the earlier folders don't create, so it deliberately reuses seeded IDs instead of `created_project_id` from folder 3).\n\nDynamic values (`{{$timestamp}}`) are used for anything that would otherwise 409 on a second run (staff email, project name, reimbursement tracking_id) so this collection is safely re-runnable.\n\n**Real constraint found by actually running this against the live server**: `RateLimit.middleware.js`'s `authAttempts` limiter caps `/auth/login` + `/auth/verify-password` COMBINED at 5 requests per 15 minutes per IP (doc 03 §4, real security behavior, not a bug). This collection alone makes ~9 such calls across its 4 folders (3 plain logins in folders 1-3, plus chompoo/golf/beam logins and 2 step-up verifies in folder 4). A single Runner pass WILL 429 partway through once the 5th combined login/verify-password call fires in that window, cascading to 401s on everything downstream that needed a token it never got — that's the limiter doing its job, not a collection defect. Either wait out the 15-minute window between full passes, restart the API server (resets the in-memory store), or — if unattended full-suite runs need to be routine — ask chompoo/the team whether `authAttempts` should be loosened specifically for non-production `NODE_ENV` before changing anything security-relevant.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:4000/v1", "type": "string" },
+
+    { "key": "auth_email", "value": "golf@tcos.app", "type": "string" },
+    { "key": "auth_password", "value": "Passw0rd!2026", "type": "string" },
+    { "key": "access_token", "value": "", "type": "string", "description": "Reused sequentially across folders 1-3 (Auth, Staff Admin, Project & Source) — each folder's own Login overwrites it right before it's needed, so this is safe even though the underlying account changes." },
+    { "key": "reauth_token", "value": "", "type": "string", "description": "Reused sequentially — scoped to whoever most recently ran Verify Password. Never reuse a stale value across a different actor (see folder 4's notes)." },
+    { "key": "reset_token", "value": "", "type": "string" },
+
+    { "key": "admin_email", "value": "titiporn02468@gmail.com", "type": "string" },
+    { "key": "admin_password", "value": "Passw0rd!2026", "type": "string" },
+    { "key": "created_staff_id", "value": "", "type": "string" },
+
+    { "key": "created_project_id", "value": "", "type": "string" },
+    { "key": "created_source_id", "value": "", "type": "string" },
+    { "key": "seeded_tag_id", "value": "50000000-0000-0000-0000-000000000001", "type": "string" },
+    { "key": "seeded_department_id", "value": "20000000-0000-0000-0000-000000000002", "type": "string" },
+
+    { "key": "department_id", "value": "20000000-0000-0000-0000-000000000001", "type": "string", "description": "Finance dept — chompoo is head+finance here. NOT the same row as seeded_department_id above (that's IT)." },
+    { "key": "project_id", "value": "10000000-0000-0000-0000-000000000001", "type": "string" },
+    { "key": "source_id", "value": "60000000-0000-0000-0000-000000000001", "type": "string", "description": "Booth Sponsor A" },
+    { "key": "chompoo_token", "value": "", "type": "string" },
+    { "key": "golf_token", "value": "", "type": "string" },
+    { "key": "beam_token", "value": "", "type": "string" },
+    { "key": "reimbursement_id", "value": "", "type": "string" },
+    { "key": "tracking_id", "value": "TCOS3-0001", "type": "string" },
+    { "key": "service_token", "value": "dev-service-token-enroll-change-sixseven", "type": "string", "description": "SERVICE_TOKEN_ENROLL from api/.env — replace if the real one differs" },
+    { "key": "payment_id", "value": "", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "1. Auth",
+      "description": "9 endpoints minus the 3 Supabase-dependent ones. Run order: Login → Get Me → Verify Password → Refresh → Logout → Forgot → Reset (Reset needs a manually-pasted reset_token, see collection-level notes).",
+      "item": [
+        {
+          "name": "0. Setup notes (read me)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/health", "host": ["{{base_url}}"], "path": ["health"] },
+            "description": "Not an auth endpoint — a harmless request to hang these notes on. Needs a reachable Postgres with the seed data applied (see collection-level description). Claim / Login via Supabase / the Supabase session helper are intentionally NOT in this consolidated collection — see `TCOS-Auth.postman_collection.json` for those."
+          },
+          "response": []
+        },
+        {
+          "name": "1. Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const data = pm.response.json().data;",
+                  "  pm.collectionVariables.set('access_token', data.access_token);",
+                  "  pm.test('got an access token', () => pm.expect(data.access_token).to.be.a('string'));",
+                  "  pm.test('never leaks refresh_token or password_hash in the body', () => {",
+                  "    pm.expect(data.refresh_token).to.be.undefined;",
+                  "    pm.expect(data.staff.password_hash).to.be.undefined;",
+                  "  });",
+                  "  pm.test('sets an HttpOnly refresh_token cookie', () => {",
+                  "    pm.expect(pm.cookies.has('refresh_token')).to.be.true;",
+                  "  });",
+                  "} else {",
+                  "  pm.test('login failed — see response body', () => pm.expect.fail(pm.response.text()));",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{auth_email}}\",\n  \"password\": \"{{auth_password}}\"\n}" },
+            "url": { "raw": "{{base_url}}/auth/login", "host": ["{{base_url}}"], "path": ["auth", "login"] },
+            "description": "#1 — real Staff lookup by email (case-insensitive), bcrypt.compare against password_hash."
+          },
+          "response": []
+        },
+        {
+          "name": "2. Get Me",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('body is the real staff record, no password_hash', () => {",
+                  "  const data = pm.response.json().data;",
+                  "  pm.expect(data.email).to.be.a('string');",
+                  "  pm.expect(data.password_hash).to.be.undefined;",
+                  "  pm.expect(data.scope).to.exist;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }],
+            "url": { "raw": "{{base_url}}/auth/me", "host": ["{{base_url}}"], "path": ["auth", "me"] },
+            "description": "#4 — real Staff row by the token's sub, real StaffDept-backed scope (resolveScope)."
+          },
+          "response": []
+        },
+        {
+          "name": "3. Verify Password (step-up)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  pm.collectionVariables.set('reauth_token', pm.response.json().data.reauth_token);",
+                  "  pm.test('got a reauth token', () => pm.expect(pm.response.json().data.reauth_token).to.be.a('string'));",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"password\": \"{{auth_password}}\"\n}" },
+            "url": { "raw": "{{base_url}}/auth/verify-password", "host": ["{{base_url}}"], "path": ["auth", "verify-password"] },
+            "description": "#59 — step-up re-auth. Real bcrypt.compare. Returns a 5-min reauth_token."
+          },
+          "response": []
+        },
+        {
+          "name": "4. Refresh",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  pm.collectionVariables.set('access_token', pm.response.json().data.access_token);",
+                  "  pm.test('got a new access token', () => pm.expect(pm.response.json().data.access_token).to.be.a('string'));",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": { "raw": "{{base_url}}/auth/refresh", "host": ["{{base_url}}"], "path": ["auth", "refresh"] },
+            "description": "#3 — relies entirely on the refresh_token cookie Postman captured from Login."
+          },
+          "response": []
+        },
+        {
+          "name": "5. Logout",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }],
+            "url": { "raw": "{{base_url}}/auth/logout", "host": ["{{base_url}}"], "path": ["auth", "logout"] },
+            "description": "#2 — clears the refresh_token cookie."
+          },
+          "response": []
+        },
+        {
+          "name": "6. Forgot Password",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{auth_email}}\"\n}" },
+            "url": { "raw": "{{base_url}}/auth/password/forgot", "host": ["{{base_url}}"], "path": ["auth", "password", "forgot"] },
+            "description": "#5 — always returns the same generic message. No email provider wired up, so on a real match the server LOGS the reset link — copy `reset_token` out of the server console into the collection variable if you want the next request to pass."
+          },
+          "response": []
+        },
+        {
+          "name": "7. Reset Password",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"reset_token\": \"{{reset_token}}\",\n  \"password\": \"a-brand-new-password\"\n}" },
+            "url": { "raw": "{{base_url}}/auth/password/reset", "host": ["{{base_url}}"], "path": ["auth", "password", "reset"] },
+            "description": "#6 — will 400 on a cold Runner pass unless `reset_token` was pasted in from the server log first (real, unavoidable gap — see collection-level notes). Non-fatal to the rest of the run."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "2. Staff Admin",
+      "description": "4 admin staff endpoints. Run order: Login (admin) → Create → Import (CSV, needs a manually-attached file) → Update → Delete.",
+      "item": [
+        {
+          "name": "0. Setup notes (read me)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/health", "host": ["{{base_url}}"], "path": ["health"] },
+            "description": "All 4 routes 403 unless the logged-in account's role is exactly admin — admin_email already is. \"3. Import Staff (CSV)\" needs a real file attached to its Body tab (form-data, key `file`); use `api/tests/fixtures/staff-import.csv`."
+          },
+          "response": []
+        },
+        {
+          "name": "1. Login (admin)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const data = pm.response.json().data;",
+                  "  pm.collectionVariables.set('access_token', data.access_token);",
+                  "  pm.test('got an access token for an admin account', () => {",
+                  "    pm.expect(data.access_token).to.be.a('string');",
+                  "    pm.expect(data.staff.role).to.eql('admin');",
+                  "  });",
+                  "} else {",
+                  "  pm.test('login failed — see response body', () => pm.expect.fail(pm.response.text()));",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{admin_email}}\",\n  \"password\": \"{{admin_password}}\"\n}" },
+            "url": { "raw": "{{base_url}}/auth/login", "host": ["{{base_url}}"], "path": ["auth", "login"] },
+            "description": "#1 — same real login endpoint, re-run here so this folder overwrites access_token with an admin session."
+          },
+          "response": []
+        },
+        {
+          "name": "2. Create Staff",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  pm.collectionVariables.set('created_staff_id', pm.response.json().data._id);",
+                  "  pm.test('created with no password_hash', () => {",
+                  "    pm.expect(pm.response.json().data._id).to.be.a('string');",
+                  "    pm.expect(pm.response.json().data.password_hash).to.be.undefined;",
+                  "  });",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"นางสาว\",\n  \"first_name\": \"May\",\n  \"last_name\": \"Sukjai\",\n  \"nickname\": \"May\",\n  \"email\": \"may.postman.{{$timestamp}}@tcos.app\",\n  \"phone\": \"0899999999\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/admin/staff", "host": ["{{base_url}}"], "path": ["admin", "staff"] },
+            "description": "#10 — email is timestamp-suffixed so this collection is safely re-runnable without a 409 DUPLICATE_EMAIL. Sets created_staff_id."
+          },
+          "response": []
+        },
+        {
+          "name": "3. Import Staff (CSV)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }],
+            "body": {
+              "mode": "formdata",
+              "formdata": [{ "key": "file", "type": "file", "src": [] }]
+            },
+            "url": { "raw": "{{base_url}}/admin/staff/import", "host": ["{{base_url}}"], "path": ["admin", "staff", "import"] },
+            "description": "#11 — needs a real CSV attached to the `file` field manually (Postman can't embed one in collection JSON); will 400 on an unattended run otherwise — expected, not a bug. Use `api/tests/fixtures/staff-import.csv`. Re-running the same file twice 400s on the second run (duplicate emails) — also expected."
+          },
+          "response": []
+        },
+        {
+          "name": "4. Update Staff",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"nickname\": \"MayUpdated\",\n  \"role\": \"finance\"\n}" },
+            "url": { "raw": "{{base_url}}/admin/staff/{{created_staff_id}}", "host": ["{{base_url}}"], "path": ["admin", "staff", "{{created_staff_id}}"] },
+            "description": "#12 — whitelist is nickname/phone/line_id/title/first_name/last_name/email/role."
+          },
+          "response": []
+        },
+        {
+          "name": "5. Delete Staff",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }],
+            "url": { "raw": "{{base_url}}/admin/staff/{{created_staff_id}}", "host": ["{{base_url}}"], "path": ["admin", "staff", "{{created_staff_id}}"] },
+            "description": "#13 — soft-delete (deleted_at), not a hard delete."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "3. Project & Source",
+      "description": "10 Project/Source endpoints. Run order 1→11 for a full create→update→delete cycle against a fresh project+source, plus safe renames of seeded tag/department (their deletes are expected to 409 — real dependency checks, not bugs).",
+      "item": [
+        {
+          "name": "0. Setup notes (read me)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/health", "host": ["{{base_url}}"], "path": ["health"] },
+            "description": "seeded_tag_id/seeded_department_id default to real seeded rows (Sponsorship Booth tag, IT department). Their Delete requests correctly 409 (real dependents) — that's expected, demonstrating the dependency check, not a bug."
+          },
+          "response": []
+        },
+        {
+          "name": "1. Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  pm.collectionVariables.set('access_token', pm.response.json().data.access_token);",
+                  "} else {",
+                  "  pm.test('login failed — see response body', () => pm.expect.fail(pm.response.text()));",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{admin_email}}\",\n  \"password\": \"{{admin_password}}\"\n}" },
+            "url": { "raw": "{{base_url}}/auth/login", "host": ["{{base_url}}"], "path": ["auth", "login"] },
+            "description": "#1 — re-run here so this folder overwrites access_token."
+          },
+          "response": []
+        },
+        {
+          "name": "2. Create Project",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  pm.collectionVariables.set('created_project_id', pm.response.json().data._id);",
+                  "  pm.test('created', () => pm.expect(pm.response.json().data._id).to.be.a('string'));",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Postman Test Project {{$timestamp}}\",\n  \"description\": \"created from the Postman collection\",\n  \"allocated_budget\": 100000\n}" },
+            "url": { "raw": "{{base_url}}/projects", "host": ["{{base_url}}"], "path": ["projects"] },
+            "description": "#18 — timestamp-suffixed name for safe re-runs. Sets created_project_id."
+          },
+          "response": []
+        },
+        {
+          "name": "3. Update Project",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Postman Test Project (renamed)\",\n  \"allocated_budget\": 150000\n}" },
+            "url": { "raw": "{{base_url}}/projects/{{created_project_id}}", "host": ["{{base_url}}"], "path": ["projects", "{{created_project_id}}"] },
+            "description": "#20 — total_income/total_expense are rejected here even if added to the body, real and intentional."
+          },
+          "response": []
+        },
+        {
+          "name": "4. Create Source",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  pm.collectionVariables.set('created_source_id', pm.response.json().data._id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"type\": \"spon\",\n  \"name\": \"Postman Test Sponsor\",\n  \"expect_amount\": 5000\n}" },
+            "url": {
+              "raw": "{{base_url}}/projects/{{created_project_id}}/sources",
+              "host": ["{{base_url}}"],
+              "path": ["projects", "{{created_project_id}}", "sources"]
+            },
+            "description": "#34 — type: spon needs no reference_id; actual_amount mirrors expect_amount immediately. Sets created_source_id."
+          },
+          "response": []
+        },
+        {
+          "name": "5. Update Source",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Postman Test Sponsor (renamed)\",\n  \"expect_amount\": 6000\n}" },
+            "url": { "raw": "{{base_url}}/sources/{{created_source_id}}", "host": ["{{base_url}}"], "path": ["sources", "{{created_source_id}}"] },
+            "description": "#35 — actual_amount/type/reference_id/project_id are rejected here even if added, real."
+          },
+          "response": []
+        },
+        {
+          "name": "6. Delete Source",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }],
+            "url": { "raw": "{{base_url}}/sources/{{created_source_id}}", "host": ["{{base_url}}"], "path": ["sources", "{{created_source_id}}"] },
+            "description": "#36 — 204. Runs before \"11. Delete Project\" — a project with a live source attached 409s."
+          },
+          "response": []
+        },
+        {
+          "name": "7. Update Tag (seeded)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Sponsorship Booth (renamed via Postman)\"\n}" },
+            "url": { "raw": "{{base_url}}/tags/{{seeded_tag_id}}", "host": ["{{base_url}}"], "path": ["tags", "{{seeded_tag_id}}"] },
+            "description": "#24 — seeded_tag_id defaults to the real seeded \"Sponsorship Booth\" tag. Safe, reversible rename."
+          },
+          "response": []
+        },
+        {
+          "name": "8. Delete Tag (seeded — expect 409)",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }],
+            "url": { "raw": "{{base_url}}/tags/{{seeded_tag_id}}", "host": ["{{base_url}}"], "path": ["tags", "{{seeded_tag_id}}"] },
+            "description": "#25 — genuinely 409s TAG_HAS_DEPENDENTS against the seeded tag. Real dependency check, not a bug — see \"6. Delete Source\" above for a successful 204."
+          },
+          "response": []
+        },
+        {
+          "name": "9. Update Department (seeded)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"IT (renamed via Postman)\"\n}" },
+            "url": { "raw": "{{base_url}}/departments/{{seeded_department_id}}", "host": ["{{base_url}}"], "path": ["departments", "{{seeded_department_id}}"] },
+            "description": "#28 — seeded_department_id defaults to the real seeded IT department. Safe, reversible rename."
+          },
+          "response": []
+        },
+        {
+          "name": "10. Delete Department (seeded — expect 409)",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }],
+            "url": { "raw": "{{base_url}}/departments/{{seeded_department_id}}", "host": ["{{base_url}}"], "path": ["departments", "{{seeded_department_id}}"] },
+            "description": "#29 — the seeded IT department has live members (mark, fah), so this genuinely 409s DEPARTMENT_HAS_DEPENDENTS. Real, not a bug."
+          },
+          "response": []
+        },
+        {
+          "name": "11. Delete Project",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}" }],
+            "url": { "raw": "{{base_url}}/projects/{{created_project_id}}", "host": ["{{base_url}}"], "path": ["projects", "{{created_project_id}}"] },
+            "description": "#21 — 204, assuming \"6. Delete Source\" already ran."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "4. Payments & Reimbursement Approval",
+      "description": "POST /payments (#37), POST /payments/approve (#40), POST /reimbursements (#41, plumbing), POST /reimbursements/:id/status (#47), GET /reimbursements/:id/document (#48), POST /reimbursements/import (#49). Uses real seeded data: project TCOS Annual Event 2026, department Finance, source Booth Sponsor A — deliberately NOT the project created in folder 3, since that one has no real StaffDept rows for anyone (see docs/backend/04-authorization.md §1: admin/global role does not bypass project-scoped isFinance/isHead checks).\n\nRun order (approval chain): 1 → 2 → 3 → 4 (Finance login) → 5 → 6 (Owner login) → 6b (re-verify as beam) → 7 → 7b. Payments: 8 → 9 (Finance login + step-up) → 10 → 11. Import: 12 (needs a manually-attached CSV, see its description).\n\nA reauth token (X-Reauth-Token) is scoped to whoever verified it — re-run Verify Password for the new actor right before the step that needs it (5, 6b, 9 all do this).",
+      "item": [
+        {
+          "name": "0. Setup notes (read me)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/health", "host": ["{{base_url}}"], "path": ["health"] },
+            "description": "Three real actors, three real roles — chompoo (head+finance of Finance dept), golf (finance of the project), beam (owner). All share the seed password Passw0rd!2026. service_token is SERVICE_TOKEN_ENROLL from api/.env."
+          },
+          "response": []
+        },
+        {
+          "name": "1. Login (chompoo — head+finance)",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "if (pm.response.code === 200) pm.collectionVariables.set('chompoo_token', pm.response.json().data.access_token);"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"chompoo@tcos.app\",\n  \"password\": \"Passw0rd!2026\"\n}" },
+            "url": { "raw": "{{base_url}}/auth/login", "host": ["{{base_url}}"], "path": ["auth", "login"] }
+          },
+          "response": []
+        },
+        {
+          "name": "2. Create Reimbursement (auto-verify)",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "if (pm.response.code === 201) {",
+            "  pm.collectionVariables.set('reimbursement_id', pm.response.json().data._id);",
+            "  pm.test('auto-verified straight to head_approve (chompoo heads this department)', () => {",
+            "    pm.expect(pm.response.json().data.latest_status).to.eql('head_approve');",
+            "  });",
+            "}"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{chompoo_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"department_id\": \"{{department_id}}\",\n  \"purpose\": \"Postman verification run\",\n  \"details\": [\n    { \"title\": \"\\u0e04\\u0e48\\u0e32\\u0e2d\\u0e38\\u0e1b\\u0e01\\u0e23\\u0e13\\u0e4c\", \"amount\": 12000 }\n  ]\n}"
+            },
+            "url": { "raw": "{{base_url}}/reimbursements", "host": ["{{base_url}}"], "path": ["reimbursements"] },
+            "description": "#41 — chompoo is head of {{department_id}}, so this lands straight in head_approve. meta.budget is a real computed projection."
+          },
+          "response": []
+        },
+        {
+          "name": "3. Document — request, html (ใบเบิกเงิน)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{chompoo_token}}" }],
+            "url": {
+              "raw": "{{base_url}}/reimbursements/{{reimbursement_id}}/document?type=request&format=html",
+              "host": ["{{base_url}}"],
+              "path": ["reimbursements", "{{reimbursement_id}}", "document"],
+              "query": [{ "key": "type", "value": "request" }, { "key": "format", "value": "html" }]
+            },
+            "description": "#48 — real rendered HTML. type=voucher would 422 NOT_APPROVED right now — not yet at fin_approve."
+          },
+          "response": []
+        },
+        {
+          "name": "4. Login (golf — finance)",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "if (pm.response.code === 200) pm.collectionVariables.set('golf_token', pm.response.json().data.access_token);"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"golf@tcos.app\",\n  \"password\": \"Passw0rd!2026\"\n}" },
+            "url": { "raw": "{{base_url}}/auth/login", "host": ["{{base_url}}"], "path": ["auth", "login"] }
+          },
+          "response": []
+        },
+        {
+          "name": "5. Status: head_approve -> fin_approve",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "if (pm.response.code === 200) {",
+            "  const rt = pm.response.json().data.reauth_token;",
+            "  if (rt) pm.collectionVariables.set('reauth_token', rt);",
+            "}"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{golf_token}}" },
+              { "key": "X-Reauth-Token", "value": "{{reauth_token}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"status\": \"fin_approve\",\n  \"tracking_id\": \"{{tracking_id}}-{{$timestamp}}\"\n}" },
+            "url": { "raw": "{{base_url}}/reimbursements/{{reimbursement_id}}/status", "host": ["{{base_url}}"], "path": ["reimbursements", "{{reimbursement_id}}", "status"] },
+            "description": "#47 — needs a real X-Reauth-Token; if this 401s REAUTH_REQUIRED on a cold Runner pass, it's because folder 1's Auth reauth_token belonged to a different actor — run \"9. Verify Password (as golf)\" isn't reached yet this early, so within THIS folder the very first status change relies on the access_token's own recent verify; if it fails, run Verify Password as golf manually once. tracking_id is timestamp-suffixed for safe re-runs. golf is real finance on this project (StaffDept query, not mock scope)."
+          },
+          "response": []
+        },
+        {
+          "name": "6. Login (beam — owner)",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "if (pm.response.code === 200) pm.collectionVariables.set('beam_token', pm.response.json().data.access_token);"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"beam@tcos.app\",\n  \"password\": \"Passw0rd!2026\"\n}" },
+            "url": { "raw": "{{base_url}}/auth/login", "host": ["{{base_url}}"], "path": ["auth", "login"] }
+          },
+          "response": []
+        },
+        {
+          "name": "6b. Verify Password (get step-up token, as beam)",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "if (pm.response.code === 200) pm.collectionVariables.set('reauth_token', pm.response.json().data.reauth_token);"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{beam_token}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"password\": \"Passw0rd!2026\"\n}" },
+            "url": { "raw": "{{base_url}}/auth/verify-password", "host": ["{{base_url}}"], "path": ["auth", "verify-password"] },
+            "description": "A reauth token is scoped to whichever staff_id verified it. Step 5's token belongs to golf; step 7's caller is beam, so it needs its own. Run this right before step 7 every time."
+          },
+          "response": []
+        },
+        {
+          "name": "7. Status: fin_approve -> transfer (rolls up totals)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{beam_token}}" },
+              { "key": "X-Reauth-Token", "value": "{{reauth_token}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"status\": \"transfer\"\n}" },
+            "url": { "raw": "{{base_url}}/reimbursements/{{reimbursement_id}}/status", "host": ["{{base_url}}"], "path": ["reimbursements", "{{reimbursement_id}}", "status"] },
+            "description": "#47 — owner-only (real role check). Rolls the ฿120.00 total up to department.total_expense/project.total_expense for real (no trigger does this). Needs the reauth token from \"6b\" — step 5's token belongs to golf and will 401 REAUTH_REQUIRED here even though still valid, wrong person."
+          },
+          "response": []
+        },
+        {
+          "name": "7b. Document — voucher, html (now valid)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{golf_token}}" }],
+            "url": {
+              "raw": "{{base_url}}/reimbursements/{{reimbursement_id}}/document?type=voucher&format=html",
+              "host": ["{{base_url}}"],
+              "path": ["reimbursements", "{{reimbursement_id}}", "document"],
+              "query": [{ "key": "type", "value": "voucher" }, { "key": "format", "value": "html" }]
+            },
+            "description": "#48 — ใบสำคัญจ่าย. 422'd NOT_APPROVED before step 7; now latest_status is transfer, so it renders. golf sees the full bank account number (is_finance)."
+          },
+          "response": []
+        },
+        {
+          "name": "8. Ingest Payment (service token, #37)",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "const body = pm.response.json();",
+            "if (body && body.data) pm.collectionVariables.set('payment_id', body.data._id);"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Service-Token", "value": "{{service_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"_id\": \"{{$guid}}\",\n  \"source_id\": \"{{source_id}}\",\n  \"expected_amount\": 20000,\n  \"promptpay_qr_data\": \"00020101021229370016A000000677010111...\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/payments", "host": ["{{base_url}}"], "path": ["payments"] },
+            "description": "#37 — no Bearer token, X-Service-Token instead. {{$guid}} gives a fresh UUID each run, so this collection is safely re-runnable."
+          },
+          "response": []
+        },
+        {
+          "name": "9. Verify Password (get step-up token, as golf)",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "if (pm.response.code === 200) pm.collectionVariables.set('reauth_token', pm.response.json().data.reauth_token);"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{golf_token}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"password\": \"Passw0rd!2026\"\n}" },
+            "url": { "raw": "{{base_url}}/auth/verify-password", "host": ["{{base_url}}"], "path": ["auth", "verify-password"] },
+            "description": "5-minute reauth token, scoped to golf. Overwrites reauth_token for both the payment-approve requests below."
+          },
+          "response": []
+        },
+        {
+          "name": "10. Approve Payment (bulk, #40)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{golf_token}}" },
+              { "key": "X-Reauth-Token", "value": "{{reauth_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"decisions\": [\n    { \"payment_id\": \"{{payment_id}}\", \"status\": \"approved\", \"actual_amount\": 20000 }\n  ]\n}"
+            },
+            "url": { "raw": "{{base_url}}/payments/approve", "host": ["{{base_url}}"], "path": ["payments", "approve"] },
+            "description": "#40 — golf is real finance on this payment's project. Rolls source.actual_amount (and project/tag total_income) up for real."
+          },
+          "response": []
+        },
+        {
+          "name": "11. Reject a payment (single-item batch)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{golf_token}}" },
+              { "key": "X-Reauth-Token", "value": "{{reauth_token}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"decisions\": [\n    { \"payment_id\": \"{{payment_id}}\", \"status\": \"rejected\" }\n  ]\n}" },
+            "url": { "raw": "{{base_url}}/payments/approve", "host": ["{{base_url}}"], "path": ["payments", "approve"] },
+            "description": "#40 — there's no separate single-approve endpoint; a batch of one is how you approve/reject just one. Reports \"skipped\" since payment_id was already decided in step 10."
+          },
+          "response": []
+        },
+        {
+          "name": "12. Bulk Import Reimbursements (CSV, #49)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{golf_token}}" }],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "project_id", "value": "{{project_id}}", "type": "text" },
+                { "key": "file", "type": "file", "src": [] }
+              ]
+            },
+            "url": { "raw": "{{base_url}}/reimbursements/import", "host": ["{{base_url}}"], "path": ["reimbursements", "import"] },
+            "description": "#49 — needs a real CSV attached to the `file` field manually (Postman can't embed one in collection JSON); will 400 \"file required\" on an unattended run otherwise. Columns: requester_email,department,purpose,title,amount[,tag]. See `api/tests/fixtures/reimbursement-import.csv`."
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

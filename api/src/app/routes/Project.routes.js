@@ -28,13 +28,25 @@ router.post("/:id/departments", ...auth, requireScope("isManager"), Validate.bod
 // #30
 router.get("/:id/staff", ...auth, requireScope("isManager"), ctrl.listStaff);
 
-// #24, #25, #28, #29 — mounted at top level (/v1/tags/:id, /v1/departments/:id) in routes/init.js
+// #24, #25, #28, #29 — mounted at top level (/v1/tags/:id, /v1/departments/:id) in routes/init.js.
+// :id here is the tag/department's own id, not a project id — requireScope needs an explicit
+// resolver to look up which project it belongs to (the default req.params.id fallback only
+// works when the URL's :id already IS the target).
+const tagProjectId = async (req) => {
+  const { ProjectTag } = require("../models");
+  return (await ProjectTag.findByPk(req.params.id))?.project_id;
+};
+const departmentProjectId = async (req) => {
+  const { Department } = require("../models");
+  return (await Department.findByPk(req.params.id))?.project_id;
+};
+
 const tagsRouter = Router();
-tagsRouter.patch("/:id", ...auth, requireScope("isFinance"), Validate.body(schema.updateTag), ctrl.updateTag);
-tagsRouter.delete("/:id", ...auth, requireScope("isFinance"), ctrl.removeTag);
+tagsRouter.patch("/:id", ...auth, requireScope("isFinance", tagProjectId), Validate.body(schema.updateTag), ctrl.updateTag);
+tagsRouter.delete("/:id", ...auth, requireScope("isFinance", tagProjectId), ctrl.removeTag);
 
 const departmentsRouter = Router();
-departmentsRouter.patch("/:id", ...auth, requireScope("isManager"), Validate.body(schema.updateDepartment), ctrl.updateDepartment);
-departmentsRouter.delete("/:id", ...auth, requireScope("isManager"), ctrl.removeDepartment);
+departmentsRouter.patch("/:id", ...auth, requireScope("isManager", departmentProjectId), Validate.body(schema.updateDepartment), ctrl.updateDepartment);
+departmentsRouter.delete("/:id", ...auth, requireScope("isManager", departmentProjectId), ctrl.removeDepartment);
 
 module.exports = { projectRouter: router, tagsRouter, departmentsRouter };
