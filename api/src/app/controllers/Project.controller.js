@@ -3,7 +3,7 @@ const { ok, created, noContent } = require("../utils/Response.util");
 const Project = require("../helpers/Project.helper");
 
 exports.list = asyncHandler(async (req, res) => {
-  const { rows, meta } = await Project.list(req.query);
+  const { rows, meta } = await Project.list(req.query, req.scope);
   return ok(res, rows, { meta });
 });
 
