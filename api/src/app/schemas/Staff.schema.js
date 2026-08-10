@@ -1,5 +1,12 @@
 const { z } = require("zod");
 
+const list = z.object({
+  department_id: z.string().uuid().optional(),
+  project_id: z.string().uuid().optional(),
+  page: z.coerce.number().int().positive().default(1),
+  limit: z.coerce.number().int().positive().max(100).default(20),
+});
+
 // Shape/type validation only — the "email and role aren't editable via PATCH /staff/me"
 // business rule stays in Staff.helper.js's own whitelist check (doc 03 §5), not duplicated
 // here with a second, differently-worded error.
@@ -9,7 +16,7 @@ const updateSelf = z.object({
   phone: z.string().regex(/^[0-9]{9,10}$/).optional(),
   line_id: z.string().optional(),
   title: z.enum(["เด็กชาย", "เด็กหญิง", "นาย", "นาง", "นางสาว"]).optional(),
-});
+}).passthrough();
 
 const addBankAccount = z.object({
   name: z.string().min(1),
@@ -37,4 +44,4 @@ const adminUpdate = z.object({
   role: z.enum(["user", "staff", "finance", "it", "hr", "owner", "admin"]).optional(),
 });
 
-module.exports = { updateSelf, addBankAccount, adminCreate, adminUpdate };
+module.exports = { list, updateSelf, addBankAccount, adminCreate, adminUpdate };

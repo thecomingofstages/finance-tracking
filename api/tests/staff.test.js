@@ -1,9 +1,18 @@
 const request = require("supertest");
 
 jest.mock("../src/app/models", () => ({
-  Staff: { findOne: jest.fn(), findByPk: jest.fn(), findAll: jest.fn(), create: jest.fn(), bulkCreate: jest.fn() },
+  Staff: {
+    findOne: jest.fn(),
+    findByPk: jest.fn(),
+    findAll: jest.fn(),
+    findAndCountAll: jest.fn(),
+    create: jest.fn(),
+    bulkCreate: jest.fn(),
+  },
   Department: { findAll: jest.fn() },
   StaffDept: { bulkCreate: jest.fn() },
+  Project: {},
+  BankAccount: { findAll: jest.fn(), findOne: jest.fn(), findByPk: jest.fn(), create: jest.fn() },
   sequelize: { transaction: jest.fn((cb) => cb({})) },
 }));
 jest.mock("../src/app/middleware/RateLimit.middleware", () => ({
@@ -11,20 +20,290 @@ jest.mock("../src/app/middleware/RateLimit.middleware", () => ({
   general: (req, res, next) => next(),
 }));
 
-const { Staff, Department, StaffDept, sequelize } = require("../src/app/models");
+const { Staff, Department, StaffDept, BankAccount, sequelize } = require("../src/app/models");
 const { buildApp } = require("./helpers/app");
 const { makeStaff } = require("./helpers/factories");
 const JWT = require("../src/app/utils/JWT.util");
 
 const app = buildApp();
 
-function bearer(role) {
-  return `Bearer ${JWT.signAccessToken({ sub: "admin-id", role, nickname: "admin" })}`;
+function bearer(role, staffId = "admin-id") {
+  return `Bearer ${JWT.signAccessToken({ sub: staffId, role, nickname: "admin" })}`;
+}
+
+function makeBankAccount(overrides = {}) {
+  const account = {
+    _id: "bank-account-id",
+    staff_id: "staff-id",
+    name: "Test Staff",
+    number: "1234567890",
+    provider: "KBank",
+    created_at: "2026-08-10T00:00:00.000Z",
+    ...overrides,
+  };
+  account.destroy = jest.fn().mockResolvedValue(account);
+  account.toJSON = function toJSON() {
+    const { destroy, toJSON: _drop, ...plain } = this;
+    return plain;
+  };
+  return account;
+}
+
+function makeMembership(overrides = {}) {
+  return {
+    _id: "membership-id",
+    department_id: "20000000-0000-0000-0000-000000000001",
+    is_head: false,
+    is_finance: false,
+    is_manager: false,
+    department: {
+      _id: "20000000-0000-0000-0000-000000000001",
+      project_id: "10000000-0000-0000-0000-000000000001",
+      name: "Finance",
+      project: { _id: "10000000-0000-0000-0000-000000000001", name: "TCOS 2026" },
+    },
+    ...overrides,
+  };
 }
 
 beforeEach(() => {
-  jest.clearAllMocks();
+  jest.resetAllMocks();
   sequelize.transaction.mockImplementation((cb) => cb({}));
+});
+
+describe("GET /v1/staff (#7)", () => {
+  it("returns a paginated staff list with membership flags and no password hash", async () => {
+    const staff = makeStaff({
+      _id: "staff-target",
+      password_hash: "must-never-leak",
+      memberships: [makeMembership({ is_manager: true })],
+    });
+    Staff.findAndCountAll.mockResolvedValueOnce({ rows: [staff], count: 3 });
+
+    const res = await request(app)
+      .get("/v1/staff?page=2&limit=1&project_id=10000000-0000-0000-0000-000000000001")
+      .set("Authorization", bearer("staff", "manager-id"));
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toHaveLength(1);
+    expect(res.body.data[0].password_hash).toBeUndefined();
+    expect(res.body.data[0].memberships[0]).toEqual(
+      expect.objectContaining({
+        project_id: "10000000-0000-0000-0000-000000000001",
+        department_id: "20000000-0000-0000-0000-000000000001",
+        is_manager: true,
+      })
+    );
+    expect(res.body.meta).toEqual({ page: 2, limit: 1, total: 3 });
+
+    const options = Staff.findAndCountAll.mock.calls[0][0];
+    expect(options).toEqual(expect.objectContaining({ limit: 1, offset: 1, distinct: true }));
+    expect(options.include[0].include[0].where).toEqual({
+      project_id: "10000000-0000-0000-0000-000000000001",
+    });
+  });
+
+  it("400s invalid filters before querying staff", async () => {
+    const res = await request(app)
+      .get("/v1/staff?project_id=not-a-uuid")
+      .set("Authorization", bearer("staff", "manager-id"));
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.field).toBe("project_id");
+    expect(Staff.findAndCountAll).not.toHaveBeenCalled();
+  });
+
+  it("401s with no bearer token", async () => {
+    const res = await request(app).get("/v1/staff");
+    expect(res.status).toBe(401);
+  });
+});
+
+describe("GET /v1/staff/:id (#8)", () => {
+  it("returns the full profile, memberships, and masked bank-account summaries", async () => {
+    Staff.findByPk.mockResolvedValueOnce(
+      makeStaff({
+        _id: "staff-target",
+        password_hash: "must-never-leak",
+        memberships: [makeMembership({ is_head: true })],
+        bankAccounts: [makeBankAccount({ number: "1234567890" })],
+      })
+    );
+
+    const res = await request(app)
+      .get("/v1/staff/staff-target")
+      .set("Authorization", bearer("staff", "manager-id"));
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.password_hash).toBeUndefined();
+    expect(res.body.data.memberships[0].is_head).toBe(true);
+    expect(res.body.data.bank_accounts[0].number).toBe("xxxxxx7890");
+    expect(res.body.data.bank_accounts[0].staff_id).toBeUndefined();
+  });
+
+  it("404s an unknown staff id", async () => {
+    Staff.findByPk.mockResolvedValueOnce(null);
+    const res = await request(app)
+      .get("/v1/staff/missing-id")
+      .set("Authorization", bearer("staff", "manager-id"));
+    expect(res.status).toBe(404);
+  });
+});
+
+describe("PATCH /v1/staff/me (#9)", () => {
+  it("updates only self-editable fields and returns the current scope", async () => {
+    const staff = makeStaff({ _id: "self-id", nickname: "old", password_hash: "secret" });
+    Staff.findByPk.mockResolvedValueOnce(staff);
+
+    const res = await request(app)
+      .patch("/v1/staff/me")
+      .set("Authorization", bearer("staff", "self-id"))
+      .send({ nickname: "new", phone: "0812345678" });
+
+    expect(res.status).toBe(200);
+    expect(staff.set).toHaveBeenCalledWith({ nickname: "new", phone: "0812345678" });
+    expect(staff.save).toHaveBeenCalledTimes(1);
+    expect(res.body.data.nickname).toBe("new");
+    expect(res.body.data.password_hash).toBeUndefined();
+    expect(res.body.data.scope.staffId).toBe("self-id");
+  });
+
+  it("400s email instead of silently stripping the forbidden field", async () => {
+    const res = await request(app)
+      .patch("/v1/staff/me")
+      .set("Authorization", bearer("staff", "self-id"))
+      .send({ email: "changed@tcos.app" });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.field).toBe("email");
+    expect(Staff.findByPk).not.toHaveBeenCalled();
+  });
+
+  it("400s an invalid phone number before querying staff", async () => {
+    const res = await request(app)
+      .patch("/v1/staff/me")
+      .set("Authorization", bearer("staff", "self-id"))
+      .send({ phone: "123" });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.field).toBe("phone");
+    expect(Staff.findByPk).not.toHaveBeenCalled();
+  });
+
+  it("404s if the staff row behind the token no longer exists", async () => {
+    Staff.findByPk.mockResolvedValueOnce(null);
+    const res = await request(app)
+      .patch("/v1/staff/me")
+      .set("Authorization", bearer("staff", "self-id"))
+      .send({ nickname: "new" });
+    expect(res.status).toBe(404);
+  });
+});
+
+describe("GET /v1/staff/me/bank-accounts (#14)", () => {
+  it("returns only the caller's live accounts with full account numbers", async () => {
+    BankAccount.findAll.mockResolvedValueOnce([
+      makeBankAccount({ staff_id: "self-id", number: "1234567890" }),
+      makeBankAccount({ _id: "bank-2", staff_id: "self-id", number: "9876543210" }),
+    ]);
+
+    const res = await request(app)
+      .get("/v1/staff/me/bank-accounts")
+      .set("Authorization", bearer("staff", "self-id"));
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.map((account) => account.number)).toEqual(["1234567890", "9876543210"]);
+    expect(res.body.data[0].staff_id).toBeUndefined();
+    expect(BankAccount.findAll).toHaveBeenCalledWith({
+      where: { staff_id: "self-id" },
+      order: [["created_at", "ASC"]],
+    });
+  });
+
+  it("returns an empty array when the caller has no account", async () => {
+    BankAccount.findAll.mockResolvedValueOnce([]);
+    const res = await request(app)
+      .get("/v1/staff/me/bank-accounts")
+      .set("Authorization", bearer("staff", "self-id"));
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual([]);
+  });
+});
+
+describe("POST /v1/staff/me/bank-accounts (#15)", () => {
+  const payload = { name: "Test Staff", number: "1234567890", provider: "KBank" };
+
+  it("creates an immutable bank account owned by the caller", async () => {
+    BankAccount.findOne.mockResolvedValueOnce(null);
+    BankAccount.create.mockResolvedValueOnce(makeBankAccount({ staff_id: "self-id", ...payload }));
+
+    const res = await request(app)
+      .post("/v1/staff/me/bank-accounts")
+      .set("Authorization", bearer("staff", "self-id"))
+      .send(payload);
+
+    expect(res.status).toBe(201);
+    expect(res.body.data.number).toBe("1234567890");
+    expect(BankAccount.create).toHaveBeenCalledWith({ staff_id: "self-id", ...payload });
+  });
+
+  it("409s a duplicate live account number owned by the caller", async () => {
+    BankAccount.findOne.mockResolvedValueOnce(makeBankAccount({ staff_id: "self-id" }));
+
+    const res = await request(app)
+      .post("/v1/staff/me/bank-accounts")
+      .set("Authorization", bearer("staff", "self-id"))
+      .send(payload);
+
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe("DUPLICATE_BANK_ACCOUNT");
+    expect(BankAccount.create).not.toHaveBeenCalled();
+  });
+
+  it("400s a non-numeric or short account number before querying the DB", async () => {
+    const res = await request(app)
+      .post("/v1/staff/me/bank-accounts")
+      .set("Authorization", bearer("staff", "self-id"))
+      .send({ ...payload, number: "ABC123" });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.field).toBe("number");
+    expect(BankAccount.findOne).not.toHaveBeenCalled();
+  });
+});
+
+describe("DELETE /v1/staff/me/bank-accounts/:id (#16)", () => {
+  it("soft-deletes an account owned by the caller", async () => {
+    const account = makeBankAccount({ _id: "bank-1", staff_id: "self-id" });
+    BankAccount.findByPk.mockResolvedValueOnce(account);
+
+    const res = await request(app)
+      .delete("/v1/staff/me/bank-accounts/bank-1")
+      .set("Authorization", bearer("staff", "self-id"));
+
+    expect(res.status).toBe(204);
+    expect(account.destroy).toHaveBeenCalledTimes(1);
+  });
+
+  it("404s an unknown bank account", async () => {
+    BankAccount.findByPk.mockResolvedValueOnce(null);
+    const res = await request(app)
+      .delete("/v1/staff/me/bank-accounts/missing-id")
+      .set("Authorization", bearer("staff", "self-id"));
+    expect(res.status).toBe(404);
+  });
+
+  it("403s an account owned by another staff member", async () => {
+    const account = makeBankAccount({ _id: "bank-1", staff_id: "someone-else" });
+    BankAccount.findByPk.mockResolvedValueOnce(account);
+
+    const res = await request(app)
+      .delete("/v1/staff/me/bank-accounts/bank-1")
+      .set("Authorization", bearer("staff", "self-id"));
+
+    expect(res.status).toBe(403);
+    expect(account.destroy).not.toHaveBeenCalled();
+  });
 });
 
 describe("POST /v1/admin/staff (#10)", () => {

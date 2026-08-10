@@ -2,7 +2,6 @@ const { fn, col, where: sqlWhere, Op } = require("sequelize");
 const ApiError = require("../utils/ApiError.util");
 const R2 = require("../utils/R2.util");
 const CSV = require("../utils/CSV.util");
-const fixtures = require("../../mocks/fixtures");
 
 /**
  * staff.email is plain TEXT UNIQUE, case-sensitive (doc 02 §6 gap #4) — lowercase both sides
@@ -23,36 +22,176 @@ function byEmail(email) {
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+function toPlain(record) {
+  if (!record) return record;
+  return typeof record.toJSON === "function" ? record.toJSON() : { ...record };
+}
+
+function toSafeStaff(record) {
+  if (typeof record.toSafeJSON === "function") return record.toSafeJSON();
+  const { password_hash, ...safe } = toPlain(record);
+  return safe;
+}
+
+function membershipJSON(record) {
+  const membership = toPlain(record);
+  const departmentRecord = record.department || membership.department;
+  const department = toPlain(departmentRecord) || {};
+  const project = toPlain(departmentRecord?.project || department.project) || {};
+  return {
+    staff_dept_id: membership._id,
+    department_id: membership.department_id,
+    department_name: department.name ?? null,
+    project_id: department.project_id,
+    project_name: project.name ?? null,
+    is_head: Boolean(membership.is_head),
+    is_finance: Boolean(membership.is_finance),
+    is_manager: Boolean(membership.is_manager),
+  };
+}
+
+function maskedNumber(number) {
+  const value = String(number || "");
+  return value.length > 4 ? `${"x".repeat(value.length - 4)}${value.slice(-4)}` : value;
+}
+
+function bankAccountJSON(record, { masked = false } = {}) {
+  const { staff_id, deleted_at, ...account } = toPlain(record);
+  return { ...account, number: masked ? maskedNumber(account.number) : account.number };
+}
+
+function staffWithRelationsJSON(record, { includeBankAccounts = false } = {}) {
+  const safe = toSafeStaff(record);
+  const memberships = record.memberships || safe.memberships || [];
+  const bankAccounts = record.bankAccounts || safe.bankAccounts || [];
+  delete safe.memberships;
+  delete safe.bankAccounts;
+  const result = { ...safe, memberships: memberships.map(membershipJSON) };
+  if (includeBankAccounts) {
+    result.bank_accounts = bankAccounts.map((account) => bankAccountJSON(account, { masked: true }));
+  }
+  return result;
+}
+
+function managerProjectIds(scope = {}) {
+  return scope.manager_of || scope.managerOf || [];
+}
+
 /**
- * Grep this file for `TODO(mock)` to find every spot returning fixture data instead of
- * querying Postgres. Endpoint numbers (#N) match docs/backend/03-api-spec.md §2.
- * `uploadSignature` is the one method here that's already fully real — R2 doesn't mock.
+ * Endpoint numbers (#N) match docs/backend/03-api-spec.md §2. Staff/profile/bank-account
+ * methods query Sequelize directly; MOCK_MODE only keeps the route-level scope guard
+ * permissive until the shared StaffDept-backed authorization middleware is wired.
  */
 class StaffHelper {
   /** #7 — GET /staff */
-  static async list(_query) {
-    // TODO(mock): scope to projects the caller manages (requireScope("isManager") only
-    // checks the route is reachable in MOCK_MODE, not which staff to actually return);
-    // join staff_dept for is_head/is_finance/is_manager flags.
-    const rows = [fixtures.staff(), fixtures.staff({ nickname: "Nok", email: "nok@tcos.app" })];
-    return { rows, meta: fixtures.pagination(rows.length) };
+  static async list({ department_id, project_id, page = 1, limit = 20 }, scope = {}) {
+    const managedProjects = managerProjectIds(scope);
+    const managesEveryProject = managedProjects.includes("*");
+    if (!managesEveryProject && !managedProjects.length) {
+      throw ApiError.forbidden("You must manage at least one project to list staff.");
+    }
+    if (project_id && !managesEveryProject && !managedProjects.includes(project_id)) {
+      throw ApiError.forbidden("You don't manage this project.", "NOT_PROJECT_MEMBER");
+    }
+
+    const { Staff, StaffDept, Department, Project } = require("../models");
+    const departmentWhere = {};
+    if (department_id) departmentWhere._id = department_id;
+    if (project_id) departmentWhere.project_id = project_id;
+    else if (!managesEveryProject) departmentWhere.project_id = { [Op.in]: managedProjects };
+
+    const { rows, count } = await Staff.findAndCountAll({
+      attributes: [
+        "_id",
+        "title",
+        "first_name",
+        "last_name",
+        "nickname",
+        "email",
+        "phone",
+        "line_id",
+        "role",
+        "signature_image",
+        "created_at",
+        "updated_at",
+      ],
+      include: [
+        {
+          model: StaffDept,
+          as: "memberships",
+          required: true,
+          attributes: ["_id", "department_id", "is_head", "is_finance", "is_manager"],
+          include: [
+            {
+              model: Department,
+              as: "department",
+              required: true,
+              where: departmentWhere,
+              attributes: ["_id", "project_id", "name"],
+              include: [{ model: Project, as: "project", attributes: ["_id", "name"] }],
+            },
+          ],
+        },
+      ],
+      distinct: true,
+      order: [["first_name", "ASC"], ["last_name", "ASC"]],
+      limit,
+      offset: (page - 1) * limit,
+    });
+
+    return {
+      rows: rows.map((staff) => staffWithRelationsJSON(staff)),
+      meta: { page, limit, total: Array.isArray(count) ? count.length : count },
+    };
   }
 
   /** #8 — GET /staff/:id */
-  static async getById(staffId) {
-    // TODO(mock): load the real Staff row + real staff_dept memberships instead of a
-    // fabricated record and the caller's own mock scope.
-    return { ...fixtures.staff({ _id: staffId }), memberships: fixtures.scope().memberships };
+  static async getById(staffId, scope = {}) {
+    const { Staff, StaffDept, Department, Project, BankAccount } = require("../models");
+    const staff = await Staff.findByPk(staffId, {
+      include: [
+        {
+          model: StaffDept,
+          as: "memberships",
+          attributes: ["_id", "department_id", "is_head", "is_finance", "is_manager"],
+          include: [
+            {
+              model: Department,
+              as: "department",
+              attributes: ["_id", "project_id", "name"],
+              include: [{ model: Project, as: "project", attributes: ["_id", "name"] }],
+            },
+          ],
+        },
+        { model: BankAccount, as: "bankAccounts" },
+      ],
+    });
+    if (!staff) throw ApiError.notFound("Staff not found.");
+
+    const managedProjects = managerProjectIds(scope);
+    if (!managedProjects.includes("*")) {
+      const targetProjects = (staff.memberships || [])
+        .map((membership) => membership.department?.project_id)
+        .filter(Boolean);
+      if (!targetProjects.some((projectId) => managedProjects.includes(projectId))) {
+        throw ApiError.forbidden("You don't manage a project this staff member belongs to.");
+      }
+    }
+
+    return staffWithRelationsJSON(staff, { includeBankAccounts: true });
   }
 
   /** #9 — PATCH /staff/me */
-  static async updateSelf(staffId, patch) {
-    // Real already: the email/role whitelist rejection below is genuine validation, not mocked.
+  static async updateSelf(staffId, patch, scope) {
     const allowed = ["nickname", "phone", "line_id", "title"];
     const rejected = Object.keys(patch).filter((k) => !allowed.includes(k));
     if (rejected.length) throw ApiError.validation(`Field not editable here: ${rejected[0]}`, rejected[0]);
-    // TODO(mock): $set on the real Staff row instead of echoing the patch onto a fixture.
-    return fixtures.staff({ _id: staffId, ...patch });
+    const { Staff } = require("../models");
+    const staff = await Staff.findByPk(staffId);
+    if (!staff) throw ApiError.notFound("Staff not found.");
+    staff.set(patch);
+    await staff.save();
+    return { ...toSafeStaff(staff), scope };
   }
 
   /** #10 — POST /admin/staff (doc 03 §5). Real: creates the identity only — no password_hash,
@@ -199,24 +338,34 @@ class StaffHelper {
   }
 
   /** #14 — GET /staff/me/bank-accounts */
-  static async listBankAccounts(_staffId) {
-    // TODO(mock): query bankaccount by staff_id instead of returning two fixtures regardless
-    // of who's asking.
-    return [fixtures.bankAccount({ number: "1234567890" }), fixtures.bankAccount({ provider: "กรุงไทย" })];
+  static async listBankAccounts(staffId) {
+    const { BankAccount } = require("../models");
+    const accounts = await BankAccount.findAll({
+      where: { staff_id: staffId },
+      order: [["created_at", "ASC"]],
+    });
+    return accounts.map((account) => bankAccountJSON(account));
   }
 
   /** #15 — POST /staff/me/bank-accounts */
   static async addBankAccount(staffId, { name, number, provider }) {
     if (!name || !number || !provider) throw ApiError.validation("name, number, and provider are required.");
-    // TODO(mock): insert the real row. Check for a duplicate live account first — the
-    // shipped schema's UNIQUE on `number` is global, not per-staff (doc 02 §6 gap #7), so a
-    // real duplicate-number error here may not mean what it looks like.
-    return fixtures.bankAccount({ staff_id: staffId, name, number, provider });
+    const { BankAccount } = require("../models");
+    const duplicate = await BankAccount.findOne({ where: { staff_id: staffId, number } });
+    if (duplicate) {
+      throw ApiError.conflict("You already have a live bank account with this number.", "DUPLICATE_BANK_ACCOUNT");
+    }
+    const account = await BankAccount.create({ staff_id: staffId, name, number, provider });
+    return bankAccountJSON(account);
   }
 
   /** #16 — DELETE /staff/me/bank-accounts/:id */
-  static async removeBankAccount(_accountId) {
-    // TODO(mock): verify ownership (403 if it belongs to someone else), then $set deleted_at.
+  static async removeBankAccount(staffId, accountId) {
+    const { BankAccount } = require("../models");
+    const account = await BankAccount.findByPk(accountId);
+    if (!account) throw ApiError.notFound("Bank account not found.");
+    if (account.staff_id !== staffId) throw ApiError.forbidden("This bank account belongs to another staff member.");
+    await account.destroy();
     return null;
   }
 

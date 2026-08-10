@@ -9,7 +9,7 @@ const router = Router();
 const auth = [verifyJWT, resolveScope];
 
 // #7
-router.get("/", ...auth, requireScope("isManager"), ctrl.list);
+router.get("/", ...auth, requireScope("isManager"), Validate.query(schema.list), ctrl.list);
 // #8
 router.get("/:id", ...auth, requireScope("isManager"), ctrl.getById);
 // #9
