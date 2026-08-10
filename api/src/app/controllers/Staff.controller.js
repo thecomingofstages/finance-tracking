@@ -3,14 +3,14 @@ const { ok, created, noContent } = require("../utils/Response.util");
 const Staff = require("../helpers/Staff.helper");
 
 exports.list = asyncHandler(async (req, res) => {
-  const { rows, meta } = await Staff.list(req.query);
+  const { rows, meta } = await Staff.list(req.query, req.scope);
   return ok(res, rows, { meta });
 });
 
-exports.getById = asyncHandler(async (req, res) => ok(res, await Staff.getById(req.params.id)));
+exports.getById = asyncHandler(async (req, res) => ok(res, await Staff.getById(req.params.id, req.scope)));
 
 exports.updateSelf = asyncHandler(async (req, res) =>
-  ok(res, await Staff.updateSelf(req.auth.staffId, req.body))
+  ok(res, await Staff.updateSelf(req.auth.staffId, req.body, req.scope))
 );
 
 exports.adminCreate = asyncHandler(async (req, res) => created(res, await Staff.adminCreate(req.body)));
@@ -38,7 +38,7 @@ exports.addBankAccount = asyncHandler(async (req, res) =>
 );
 
 exports.removeBankAccount = asyncHandler(async (req, res) => {
-  await Staff.removeBankAccount(req.params.id);
+  await Staff.removeBankAccount(req.auth.staffId, req.params.id);
   return noContent(res);
 });
 

@@ -8,16 +8,9 @@ const schema = require("../schemas/Staff.schema");
 const router = Router();
 const auth = [verifyJWT, resolveScope];
 
-// #7 — no :id here, so the default target resolves to undefined -> requireScope's coarse
-// fallback ("isManager of any project at all"). Real once Staff.helper.js#list stops mocking.
-router.get("/", ...auth, requireScope("isManager"), ctrl.list);
-// #8 — TODO: :id here is the TARGET STAFF member's id, not a project id. requireScope's default
-// resolver (req.params.id) is wrong for this route — it'd check a staff id against managerOf's
-// list of PROJECT ids, which will never match, so this always 403s once MOCK_MODE=false. Needs
-// a real resolver checking whether the caller manages ANY project the target staff belongs to
-// (StaffDept lookup on the target, intersected with the caller's managerOf) — left as a real,
-// flagged gap rather than guessed at, since #7/#8 (and their still-mocked Staff.helper.js
-// bodies) aren't this branch's endpoints.
+// #7
+router.get("/", ...auth, requireScope("isManager"), Validate.query(schema.list), ctrl.list);
+// #8
 router.get("/:id", ...auth, requireScope("isManager"), ctrl.getById);
 // #9
 router.patch("/me", ...auth, Validate.body(schema.updateSelf), ctrl.updateSelf);
