@@ -8,7 +8,7 @@ const router = Router();
 const auth = [verifyJWT, resolveScope];
 
 // #17
-router.get("/", ...auth, ctrl.list);
+router.get("/", ...auth, Validate.query(schema.list), ctrl.list);
 // #18
 router.post("/", ...auth, requireScope("isFinanceOrAdmin"), Validate.body(schema.create), ctrl.create);
 // #19
