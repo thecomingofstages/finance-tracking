@@ -25,8 +25,8 @@ router.delete("/me/bank-accounts/:id", ...auth, ctrl.removeBankAccount);
 router.post("/me/signature", ...auth, requireReauth, upload.signature, ctrl.uploadSignature);
 
 // #10-13 — admin-only, mounted under /v1/admin/staff in routes/init.js. requireRole("admin")
-// is real (straight off the JWT, doc 03 §5 step 1) — not requireScope("isGlobal"), which is
-// broader (finance/owner/admin too) and still mock-gated pending the StaffDept scope system.
+// on purpose, not requireScope("isGlobal") — the latter is broader (finance/owner/admin too;
+// real now as of this pass, but still the wrong flag for a route the spec says is admin-only).
 const adminRouter = Router();
 adminRouter.post("/", ...auth, requireRole("admin"), Validate.body(schema.adminCreate), ctrl.adminCreate);
 // #11 — multipart, no Validate.body, same reasoning as #60 above.
