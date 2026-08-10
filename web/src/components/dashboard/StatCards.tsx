@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { formatCurrencyTH, formatIntegerTH } from "@/lib/format";
 
 export interface StatSummaryData {
   total_income?: number;
@@ -14,14 +15,6 @@ export interface StatCardsProps {
   isLoading?: boolean;
 }
 
-const formatCurrency = (val?: number): string => {
-  const amount = val ?? 0;
-  return `฿${amount.toLocaleString("th-TH", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`;
-};
-
 export const StatCards: React.FC<StatCardsProps> = ({
   summaryData,
   isLoading = false,
@@ -29,7 +22,7 @@ export const StatCards: React.FC<StatCardsProps> = ({
   const cards = [
     {
       title: "รายรับรวม (Total Income)",
-      value: formatCurrency(summaryData?.total_income),
+      value: formatCurrencyTH(summaryData?.total_income, 2),
       icon: (
         <svg className="w-5 h-5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M12 4v16m8-8H4" />
@@ -42,7 +35,7 @@ export const StatCards: React.FC<StatCardsProps> = ({
     },
     {
       title: "รายจ่ายรวม (Total Expense)",
-      value: formatCurrency(summaryData?.total_expense),
+      value: formatCurrencyTH(summaryData?.total_expense, 2),
       icon: (
         <svg className="w-5 h-5 text-rose-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M20 12H4" />
@@ -55,7 +48,7 @@ export const StatCards: React.FC<StatCardsProps> = ({
     },
     {
       title: "กระแสเงินสดสุทธิ (Net Cash Flow)",
-      value: formatCurrency(summaryData?.net_cashflow),
+      value: formatCurrencyTH(summaryData?.net_cashflow, 2),
       icon: (
         <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M3 6l9-3 9 3v12l-9 3-9-3V6z" />
@@ -68,7 +61,7 @@ export const StatCards: React.FC<StatCardsProps> = ({
     },
     {
       title: "รายการรออนุมัติ/รอโอน (Pending Requests)",
-      value: `${(summaryData?.pending_count ?? 0).toLocaleString("th-TH")} รายการ`,
+      value: `${formatIntegerTH(summaryData?.pending_count)} รายการ`,
       icon: (
         <svg className="w-5 h-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
