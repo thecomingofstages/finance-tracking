@@ -1,11 +1,12 @@
 const request = require("supertest");
 
 jest.mock("../src/app/models", () => ({
-  Payment: { findByPk: jest.fn(), findOne: jest.fn(), create: jest.fn() },
+  Payment: { findByPk: jest.fn(), findOne: jest.fn(), findAndCountAll: jest.fn(), create: jest.fn() },
   PaymentStatus: { findOne: jest.fn(), create: jest.fn() },
   Source: { findByPk: jest.fn(), increment: jest.fn() },
   ProjectTag: { increment: jest.fn() },
   Project: { increment: jest.fn() },
+  Staff: {},
   StaffDept: { findOne: jest.fn() },
   Department: {},
   sequelize: { transaction: jest.fn((cb) => cb({})) },
@@ -38,8 +39,149 @@ function makePayment(overrides = {}) {
 }
 
 beforeEach(() => {
-  jest.clearAllMocks();
+  jest.resetAllMocks();
   sequelize.transaction.mockImplementation((cb) => cb({}));
+});
+
+describe("GET /v1/payments (#38, checkslip queue)", () => {
+  it("returns the project's paginated payments with current status and source", async () => {
+    Payment.findAndCountAll.mockResolvedValueOnce({
+      rows: [
+        makePayment({
+          status: "waiting",
+          source: {
+            _id: SOURCE_ID,
+            project_id: SOURCE_ID,
+            type: "enroll",
+            name: "Registration",
+          },
+        }),
+      ],
+      count: 3,
+    });
+
+    const res = await request(app)
+      .get(`/v1/payments?project_id=${SOURCE_ID}&status=waiting&page=2&limit=1`)
+      .set("Authorization", financeBearer);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual([
+      expect.objectContaining({
+        _id: PAYMENT_ID,
+        status: "waiting",
+        source: expect.objectContaining({ project_id: SOURCE_ID, name: "Registration" }),
+      }),
+    ]);
+    expect(res.body.meta).toEqual({ page: 2, limit: 1, total: 3 });
+
+    const options = Payment.findAndCountAll.mock.calls[0][0];
+    expect(options.include[0]).toEqual(
+      expect.objectContaining({ as: "source", required: true, where: { project_id: SOURCE_ID } })
+    );
+    expect(options.order).toEqual([["created_at", "ASC"], ["_id", "ASC"]]);
+    expect(options).toEqual(expect.objectContaining({ limit: 1, offset: 1 }));
+    expect(options.where).toBeDefined();
+  });
+
+  it("treats a payment with no status history as waiting", async () => {
+    Payment.findAndCountAll.mockResolvedValueOnce({
+      rows: [makePayment({ source: { _id: SOURCE_ID, project_id: SOURCE_ID, name: "Sponsor" } })],
+      count: 1,
+    });
+
+    const res = await request(app)
+      .get(`/v1/payments?project_id=${SOURCE_ID}`)
+      .set("Authorization", financeBearer);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data[0].status).toBe("waiting");
+    expect(Payment.findAndCountAll.mock.calls[0][0].where).toBeUndefined();
+  });
+
+  it("400s when project_id is missing", async () => {
+    const res = await request(app).get("/v1/payments").set("Authorization", financeBearer);
+    expect(res.status).toBe(400);
+    expect(res.body.error.field).toBe("project_id");
+    expect(Payment.findAndCountAll).not.toHaveBeenCalled();
+  });
+
+  it("400s invalid status or pagination", async () => {
+    const res = await request(app)
+      .get(`/v1/payments?project_id=${SOURCE_ID}&status=pending&page=0&limit=101`)
+      .set("Authorization", financeBearer);
+    expect(res.status).toBe(400);
+    expect(Payment.findAndCountAll).not.toHaveBeenCalled();
+  });
+
+  it("401s without a bearer token", async () => {
+    const res = await request(app).get(`/v1/payments?project_id=${SOURCE_ID}`);
+    expect(res.status).toBe(401);
+  });
+});
+
+describe("GET /v1/payments/:id (#39)", () => {
+  it("returns payment details with the complete chronological status history", async () => {
+    Payment.findByPk.mockResolvedValueOnce(
+      makePayment({
+        source: {
+          _id: SOURCE_ID,
+          project_id: SOURCE_ID,
+          type: "enroll",
+          name: "Registration",
+        },
+        history: [
+          {
+            _id: "status-1",
+            status: "waiting",
+            actual_amount: null,
+            created_at: "2026-08-01T10:00:00.000Z",
+            staff: { _id: "staff-1", nickname: "Golf" },
+          },
+          {
+            _id: "status-2",
+            status: "approved",
+            actual_amount: 50000,
+            created_at: "2026-08-01T11:00:00.000Z",
+            staff: { _id: "staff-1", nickname: "Golf" },
+          },
+        ],
+      })
+    );
+
+    const res = await request(app).get(`/v1/payments/${PAYMENT_ID}`).set("Authorization", financeBearer);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toMatchObject({
+      _id: PAYMENT_ID,
+      status: "approved",
+      source: { project_id: SOURCE_ID, name: "Registration" },
+    });
+    expect(res.body.data.history.map(({ status }) => status)).toEqual(["waiting", "approved"]);
+
+    const options = Payment.findByPk.mock.calls[0][1];
+    const historyInclude = options.include.find(({ as }) => as === "history");
+    expect(historyInclude).toEqual(
+      expect.objectContaining({ separate: true, order: [["created_at", "ASC"]] })
+    );
+    expect(historyInclude.include[0]).toEqual(
+      expect.objectContaining({ as: "staff", attributes: ["_id", "nickname"] })
+    );
+  });
+
+  it("returns waiting with an empty history before the first decision", async () => {
+    Payment.findByPk.mockResolvedValueOnce(
+      makePayment({ source: { _id: SOURCE_ID, project_id: SOURCE_ID }, history: [] })
+    );
+    const res = await request(app).get(`/v1/payments/${PAYMENT_ID}`).set("Authorization", financeBearer);
+    expect(res.status).toBe(200);
+    expect(res.body.data).toMatchObject({ status: "waiting", history: [] });
+  });
+
+  it("404s an unknown payment", async () => {
+    Payment.findByPk.mockResolvedValueOnce(null);
+    const res = await request(app).get(`/v1/payments/${PAYMENT_ID}`).set("Authorization", financeBearer);
+    expect(res.status).toBe(404);
+  });
 });
 
 describe("POST /v1/payments (#37, service token)", () => {

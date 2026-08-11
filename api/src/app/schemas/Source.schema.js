@@ -1,5 +1,10 @@
 const { z } = require("zod");
 
+const list = z.object({
+  type: z.enum(["enroll", "merch", "spon", "other"]).optional(),
+  tag_id: z.string().uuid().optional(),
+});
+
 const create = z.object({
   type: z.enum(["enroll", "merch", "spon", "other"]),
   name: z.string().min(1),
@@ -20,4 +25,4 @@ const update = z.object({
   project_id: z.string().uuid().optional(),
 });
 
-module.exports = { create, update };
+module.exports = { list, create, update };

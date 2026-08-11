@@ -4,7 +4,7 @@ jest.mock("../src/app/models", () => ({
   Project: { findByPk: jest.fn(), create: jest.fn() },
   ProjectTag: { findByPk: jest.fn(), findOne: jest.fn(), count: jest.fn() },
   Department: { findByPk: jest.fn(), findOne: jest.fn(), count: jest.fn() },
-  Source: { findByPk: jest.fn(), findOne: jest.fn(), count: jest.fn(), create: jest.fn() },
+  Source: { findByPk: jest.fn(), findOne: jest.fn(), findAll: jest.fn(), count: jest.fn(), create: jest.fn() },
   Reimbursement: { count: jest.fn() },
   StaffDept: { count: jest.fn() },
   Payment: { count: jest.fn() },
@@ -45,6 +45,78 @@ beforeEach(() => {
   // it queued and leak into the next test. resetAllMocks clears queued implementations too.
   jest.resetAllMocks();
   sequelize.query.mockResolvedValue([]);
+});
+
+describe("GET /v1/projects/:id/sources (#33)", () => {
+  const tagId = "550e8400-e29b-41d4-a716-446655440010";
+
+  it("returns sources filtered by type and tag", async () => {
+    Project.findByPk.mockResolvedValueOnce(makeRecord({ _id: "p1" }));
+    Source.findAll.mockResolvedValueOnce([
+      makeRecord({
+        _id: "s1",
+        project_id: "p1",
+        type: "enroll",
+        tag_id: tagId,
+        name: "Registration",
+        expect_amount: 50000,
+        actual_amount: 0,
+      }),
+    ]);
+
+    const res = await request(app)
+      .get(`/v1/projects/p1/sources?type=enroll&tag_id=${tagId}`)
+      .set("Authorization", auth);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual([
+      expect.objectContaining({ _id: "s1", project_id: "p1", type: "enroll", tag_id: tagId }),
+    ]);
+    expect(Source.findAll).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { project_id: "p1", type: "enroll", tag_id: tagId } })
+    );
+  });
+
+  it("queries every source in the project when filters are omitted", async () => {
+    Project.findByPk.mockResolvedValueOnce(makeRecord({ _id: "p1" }));
+    Source.findAll.mockResolvedValueOnce([]);
+
+    const res = await request(app).get("/v1/projects/p1/sources").set("Authorization", auth);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual([]);
+    expect(Source.findAll).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { project_id: "p1" } })
+    );
+  });
+
+  it("400s an unsupported source type", async () => {
+    const res = await request(app)
+      .get("/v1/projects/p1/sources?type=invalid")
+      .set("Authorization", auth);
+    expect(res.status).toBe(400);
+    expect(Source.findAll).not.toHaveBeenCalled();
+  });
+
+  it("400s an invalid tag_id", async () => {
+    const res = await request(app)
+      .get("/v1/projects/p1/sources?tag_id=not-a-uuid")
+      .set("Authorization", auth);
+    expect(res.status).toBe(400);
+    expect(Source.findAll).not.toHaveBeenCalled();
+  });
+
+  it("404s when the project does not exist", async () => {
+    Project.findByPk.mockResolvedValueOnce(null);
+    const res = await request(app).get("/v1/projects/ghost/sources").set("Authorization", auth);
+    expect(res.status).toBe(404);
+    expect(Source.findAll).not.toHaveBeenCalled();
+  });
+
+  it("401s without a bearer token", async () => {
+    const res = await request(app).get("/v1/projects/p1/sources");
+    expect(res.status).toBe(401);
+  });
 });
 
 describe("POST /v1/projects (#18)", () => {
