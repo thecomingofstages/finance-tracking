@@ -3,11 +3,11 @@ const { ok } = require("../utils/Response.util");
 const ApiError = require("../utils/ApiError.util");
 const Report = require("../helpers/Report.helper");
 
-exports.summary = asyncHandler(async (req, res) => ok(res, await Report.summary(req.query)));
+exports.summary = asyncHandler(async (req, res) => ok(res, await Report.summary(req.query, req.scope)));
 
-exports.cashflow = asyncHandler(async (req, res) => ok(res, await Report.cashflow(req.query)));
+exports.cashflow = asyncHandler(async (req, res) => ok(res, await Report.cashflow(req.query, req.scope)));
 
-exports.journal = asyncHandler(async (req, res) => ok(res, await Report.journal(req.query)));
+exports.journal = asyncHandler(async (req, res) => ok(res, await Report.journal(req.query, req.scope)));
 
 exports.journalExport = asyncHandler(async (req, res) => {
   const { contentType, filename, body } = await Report.journalExport(req.query, req.body?.format || req.query.format);
@@ -16,9 +16,9 @@ exports.journalExport = asyncHandler(async (req, res) => {
   return res.send(body);
 });
 
-exports.topExpenses = asyncHandler(async (req, res) => ok(res, await Report.topExpenses(req.query)));
+exports.topExpenses = asyncHandler(async (req, res) => ok(res, await Report.topExpenses(req.query, req.scope)));
 
-exports.sponsors = asyncHandler(async (req, res) => ok(res, await Report.sponsors(req.query)));
+exports.sponsors = asyncHandler(async (req, res) => ok(res, await Report.sponsors(req.query, req.scope)));
 
 exports.ledger = asyncHandler(async (req, res) => {
   throw new ApiError(

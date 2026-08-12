@@ -1298,10 +1298,12 @@ Reads the trigger-maintained aggregates directly — no `SUM` at read time, whic
     "total_income":     12500000,
     "total_expense":     8300000,
     "net_income":        4200000,
+    "net_cashflow":      4200000,
     "allocated_budget": 15000000,
     "budget_used_pct":       55.3,
     "outstanding_reimbursements": { "count": 7, "amount": 450000 },
     "pending_slips":             { "count": 12 },
+    "pending_count":                         12,
     "by_tag": [
       { "tag_id": "018c...", "name": "ค่าสถานที่",
         "allocated_budget": 5000000, "total_income": 0, "total_expense": 4800000 }
@@ -1313,6 +1315,9 @@ Reads the trigger-maintained aggregates directly — no `SUM` at read time, whic
   }
 }
 ```
+
+`net_cashflow` and `pending_count` are compatibility aliases for the dashboard;
+`net_income` and `pending_slips.count` remain in the response for existing consumers.
 
 ### `GET /reports/journal` — สมุดรายวัน
 
@@ -1359,7 +1364,7 @@ entirely on which option Finance picks.
 
 **Auth:** Bearer, scoped (same rule as `/reports/summary`)
 
-**Query:** `?project_id=` `?limit=5` (default 5, "Top 5 most expensive expenses?" per the plan)
+**Query:** `?project_id=` `?limit=5` (default 5, range 1–100; "Top 5 most expensive expenses?" per the plan)
 
 **Flow**
 1. Scope as in `/reports/summary`.

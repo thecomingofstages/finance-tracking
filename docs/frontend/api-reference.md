@@ -538,23 +538,17 @@ approval chain; this isn't a shortcut around approval, just around re-typing.
 
 ```jsonc
 { "success": true, "data": {
-    "total_income": 12500000, "total_expense": 8300000, "net_income": 4200000,
+    "total_income": 12500000, "total_expense": 8300000,
+    "net_income": 4200000, "net_cashflow": 4200000,
     "allocated_budget": 15000000, "budget_used_pct": 55.3,
     "outstanding_reimbursements": { "count": 7, "amount": 450000 },
-    "pending_slips": { "count": 12 },
+    "pending_slips": { "count": 12 }, "pending_count": 12,
     "by_tag": [ /* ... */ ], "by_department": [ /* ... */ ] } }
 ```
 
-> **TODO contract gap (2026-08-10):** the dashboard
-> (`web/src/app/page.tsx` → `StatCards`) reads `total_income`,
-> `total_expense`, **`net_cashflow`**, and **`pending_count`** — none of which
-> the response above contains. The current `api/src/app/helpers/Report.helper.js`
-> returns the mock shape above verbatim regardless of `MOCK_MODE`, and the FE
-> papers over the gap with `??` defaults + the defensive formatters in
-> `web/src/lib/format.ts` (so the page still renders). When the helper is
-> real-ified, return the four fields above with names that match what the
-> dashboard reads (`net_cashflow`, not `net_income`; `pending_count`,
-> not `pending_slips.count`) — or coordinate the rename on both sides.
+`net_cashflow` and `pending_count` are dashboard-compatible aliases. The
+documented `net_income` and `pending_slips.count` fields remain available for
+existing consumers.
 
 ### `GET /reports/cashflow` — `/` page breakdown
 **Auth:** finance, owner. Income by source type, expense by department and tag, a monthly time
