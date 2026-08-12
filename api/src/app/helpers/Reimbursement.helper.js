@@ -1,10 +1,157 @@
-const { fn, col, where: sqlWhere } = require("sequelize");
+const { Op, fn, col, where: sqlWhere } = require("sequelize");
 const ApiError = require("../utils/ApiError.util");
 const R2 = require("../utils/R2.util");
 const CSV = require("../utils/CSV.util");
 const { ApprovalHelper } = require("./Approval.helper");
 const { db } = require("../config/init");
-const fixtures = require("../../mocks/fixtures");
+const EDITABLE_STATUSES = new Set(["waiting", "rejected"]);
+const STAFF_SUMMARY_ATTRIBUTES = ["_id", "title", "first_name", "last_name", "nickname", "email"];
+const MAX_RECEIPT_BYTES = 10 * 1024 * 1024;
+
+function toPlain(record) {
+  if (!record) return record;
+  return typeof record.toJSON === "function" ? record.toJSON() : { ...record };
+}
+
+function safeStaff(record) {
+  const staff = toPlain(record);
+  if (!staff) return null;
+  return Object.fromEntries(
+    STAFF_SUMMARY_ATTRIBUTES.filter((key) => staff[key] !== undefined).map((key) => [key, staff[key]])
+  );
+}
+
+function maskedNumber(number) {
+  const value = String(number || "");
+  return value.length > 4 ? `${"x".repeat(value.length - 4)}${value.slice(-4)}` : value;
+}
+
+function scopeValues(scope = {}, camelKey, snakeKey) {
+  return [...new Set([...(scope[camelKey] || []), ...(scope[snakeKey] || [])])];
+}
+
+function scopeCovers(values, targetId, { wildcard = true } = {}) {
+  return values.includes(targetId) || (wildcard && values.includes("*"));
+}
+
+function hasOwn(object, key) {
+  return Object.prototype.hasOwnProperty.call(object, key);
+}
+
+function assertEditable(status, message = "Only editable while waiting or rejected.") {
+  if (!EDITABLE_STATUSES.has(status)) throw new ApiError(422, "INVALID_TRANSITION", message);
+}
+
+function reimbursementAmount(record) {
+  const plain = toPlain(record);
+  const details = record?.details || plain?.details || [];
+  return details.reduce((sum, detail) => sum + Number(toPlain(detail).amount || 0), 0);
+}
+
+function listItem(record) {
+  const plain = toPlain(record);
+  const membership = toPlain(record.staffDept || plain.staffDept) || {};
+  const departmentRecord = record.staffDept?.department || membership.department;
+  const department = toPlain(departmentRecord) || {};
+  const project = toPlain(departmentRecord?.project || department.project) || {};
+  const requester = safeStaff(record.staffDept?.staff || membership.staff);
+
+  return {
+    _id: plain._id,
+    staff_dept_id: plain.staff_dept_id,
+    tag_id: plain.tag_id,
+    purpose: plain.purpose,
+    title: plain.purpose,
+    tracking_id: plain.tracking_id,
+    banking_id: plain.banking_id,
+    latest_status: plain.latest_status,
+    status: plain.latest_status,
+    amount: reimbursementAmount(record),
+    department_id: membership.department_id,
+    department_name: department.name ?? null,
+    project_id: department.project_id,
+    project_name: project.name ?? null,
+    requester,
+    requester_name: requester ? `${requester.first_name || ""} ${requester.last_name || ""}`.trim() : null,
+    tag: toPlain(record.tag || plain.tag) || null,
+    created_at: plain.created_at,
+    updated_at: plain.updated_at,
+  };
+}
+
+async function budgetProjection(department, candidateAmount, excludeReimbursementId) {
+  const { sequelize } = require("../models");
+  const excludeClause = excludeReimbursementId ? "AND r._id <> :excludeReimbursementId" : "";
+  const replacements = { departmentId: department._id };
+  if (excludeReimbursementId) replacements.excludeReimbursementId = excludeReimbursementId;
+
+  const [row = { used: 0 }] = await sequelize.query(
+    `SELECT COALESCE(SUM(rd.amount), 0)::int AS used
+     FROM ${db.schema}.reimbursement_detail rd
+     JOIN ${db.schema}.reimbursement r ON r._id = rd.reimbursement_id
+     JOIN ${db.schema}.staff_dept sd ON sd._id = r.staff_dept_id
+     WHERE sd.department_id = :departmentId
+       AND r.latest_status NOT IN ('rejected', 'delete')
+       AND r.deleted_at IS NULL AND rd.deleted_at IS NULL
+       ${excludeClause}`,
+    { replacements, type: sequelize.QueryTypes.SELECT }
+  );
+
+  const used = Number(row.used || 0);
+  const allocated = Number(department.allocated_budget || 0);
+  const projected = used + Number(candidateAmount || 0);
+  return {
+    department_allocated: allocated,
+    department_used: used,
+    would_exceed: projected > allocated,
+    over_by: Math.max(0, projected - allocated),
+  };
+}
+
+function detectReceipt(buffer) {
+  if (!Buffer.isBuffer(buffer)) return null;
+  if (buffer.length >= 5 && buffer.subarray(0, 5).toString("ascii") === "%PDF-") {
+    return { extension: "pdf", contentType: "application/pdf" };
+  }
+  if (
+    buffer.length >= 8 &&
+    buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
+  ) {
+    return { extension: "png", contentType: "image/png" };
+  }
+  if (buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
+    return { extension: "jpg", contentType: "image/jpeg" };
+  }
+  return null;
+}
+
+async function detailJSON(record, { canSeeFullBankAccount = false } = {}) {
+  const plain = toPlain(record);
+  const membershipRecord = record.staffDept || plain.staffDept;
+  const membership = toPlain(membershipRecord);
+  const bankRecord = record.bankAccount || plain.bankAccount;
+  const bankAccount = toPlain(bankRecord);
+  const historyRecords = record.history || plain.history || [];
+  const receiptLink = plain.receipt_link ? await R2.presignedUrl("receipts", plain.receipt_link) : null;
+
+  if (membership) membership.staff = safeStaff(membershipRecord?.staff || membership.staff);
+  if (bankAccount) {
+    delete bankAccount.staff_id;
+    delete bankAccount.deleted_at;
+    bankAccount.number = canSeeFullBankAccount ? bankAccount.number : maskedNumber(bankAccount.number);
+  }
+
+  return {
+    ...plain,
+    receipt_link: receiptLink,
+    staffDept: membership || undefined,
+    bankAccount: bankAccount || undefined,
+    history: historyRecords.map((entryRecord) => {
+      const entry = toPlain(entryRecord);
+      return { ...entry, staff: safeStaff(entryRecord.staff || entry.staff) };
+    }),
+  };
+}
 
 /** staff.email is plain TEXT UNIQUE, case-sensitive (doc 02 §6 gap #4) — lowercase both sides. */
 function byEmail(email) {
@@ -24,19 +171,15 @@ async function isFinanceOfProject(staffId, projectId) {
   return Boolean(row);
 }
 
-/**
- * Grep this file for `TODO(mock)` to find every spot returning fixture data instead of
- * querying Postgres. Endpoint numbers (#N) match docs/backend/03-api-spec.md §2.
- * `uploadReceipt` is already fully real (R2 doesn't mock — see api/README.md). #41, #47, #49
- * are real as of this pass; #42-46 (list/getById/update/cancel/receipt's DB write-back) stay
- * mocked — not this round's scope.
- */
+/** Endpoint numbers (#N) match docs/backend/03-api-spec.md §2. Reimbursement persistence,
+ * authorization, history, and receipt metadata are backed by Sequelize. R2 retains its local
+ * fallback when storage credentials are not configured. */
 class ReimbursementHelper {
   /** #41 — POST /reimbursements. No draft stage — creation lands directly in 'waiting', or
    *  'head_approve' if the requester is themselves head of the target department (doc 04 §4
    *  auto-verify — two status rows inserted in the same transaction, both attributed to the
-   *  requester). Budget check is a real query (sum of every non-rejected/non-deleted
-   *  reimbursement detail in this department, via staff_dept) — it warns, never blocks. */
+   *  requester). Budget projection adds this request to the department's current active usage —
+   *  it warns, never blocks. */
   static async create({ department_id, tag_id, purpose, banking_id, details }, { staffId }) {
     if (!department_id || !purpose) throw ApiError.validation("department_id and purpose are required.");
     if (!Array.isArray(details) || !details.length) {
@@ -65,6 +208,8 @@ class ReimbursementHelper {
     }
 
     const autoVerify = ApprovalHelper.shouldAutoVerifyHead({ isRequesterHeadOfDepartment: membership.is_head });
+    const candidateAmount = details.reduce((sum, detail) => sum + Number(detail.amount), 0);
+    const budget = await budgetProjection(department, candidateAmount);
 
     const reimbursementId = await sequelize.transaction(async (t) => {
       const reimbursement = await Reimbursement.create(
@@ -87,89 +232,201 @@ class ReimbursementHelper {
 
     const record = await Reimbursement.findByPk(reimbursementId, { include: [{ model: ReimbursementDetail, as: "details" }] });
 
-    const [{ used }] = await sequelize.query(
-      `SELECT COALESCE(SUM(rd.amount), 0)::int AS used
-       FROM ${db.schema}.reimbursement_detail rd
-       JOIN ${db.schema}.reimbursement r ON r._id = rd.reimbursement_id
-       JOIN ${db.schema}.staff_dept sd ON sd._id = r.staff_dept_id
-       WHERE sd.department_id = :departmentId
-         AND r.latest_status NOT IN ('rejected', 'delete')
-         AND r.deleted_at IS NULL AND rd.deleted_at IS NULL`,
-      { replacements: { departmentId: department_id }, type: sequelize.QueryTypes.SELECT }
-    );
-
     return {
       record: record.toJSON(),
-      meta: {
-        budget: {
-          department_allocated: department.allocated_budget,
-          department_used: used,
-          would_exceed: used > department.allocated_budget,
-          over_by: Math.max(0, used - department.allocated_budget),
-        },
-      },
+      meta: { budget },
     };
   }
 
   /** #42 — GET /reimbursements */
-  static async list(_query) {
-    // TODO(mock): scope to what the caller requested or can approve at their current stage
-    // (doc 03 §9), apply status/department_id/project_id/mine filters. Currently always
-    // returns the same two fixtures.
-    const rows = [
-      fixtures.reimbursement({ latest_status: "waiting" }),
-      fixtures.reimbursement({ latest_status: "fin_approve", tracking_id: "TCOS3-0042" }),
-    ];
-    return { rows, meta: fixtures.pagination(rows.length) };
+  static async list({ status, department_id, project_id, mine = false, page = 1, limit = 20 }, scope = {}) {
+    const { Reimbursement, ReimbursementDetail, StaffDept, Staff, Department, Project, ProjectTag } = require("../models");
+    const headOf = scopeValues(scope, "headOf", "head_of");
+    const financeOf = scopeValues(scope, "financeOf", "finance_of");
+    const access = [];
+
+    if (mine) {
+      access.push({ "$staffDept.staff_id$": scope.staffId });
+    } else if (!scope.isGlobal) {
+      access.push({ "$staffDept.staff_id$": scope.staffId });
+      if (headOf.length) {
+        const headAccess = { latest_status: "waiting" };
+        if (!headOf.includes("*")) headAccess["$staffDept.department_id$"] = { [Op.in]: headOf };
+        access.push(headAccess);
+      }
+      if (financeOf.length) {
+        const financeAccess = { latest_status: "head_approve" };
+        if (!financeOf.includes("*")) financeAccess["$staffDept.department.project_id$"] = { [Op.in]: financeOf };
+        access.push(financeAccess);
+      }
+    }
+
+    const filters = [];
+    if (access.length) filters.push({ [Op.or]: access });
+    if (status) filters.push({ latest_status: status });
+    if (department_id) filters.push({ "$staffDept.department_id$": department_id });
+    if (project_id) filters.push({ "$staffDept.department.project_id$": project_id });
+
+    const { rows, count } = await Reimbursement.findAndCountAll({
+      ...(filters.length && { where: { [Op.and]: filters } }),
+      attributes: [
+        "_id", "staff_dept_id", "tag_id", "purpose", "tracking_id", "banking_id", "latest_status", "created_at", "updated_at",
+      ],
+      include: [
+        { model: ReimbursementDetail, as: "details", separate: true, attributes: ["_id", "title", "amount"] },
+        {
+          model: StaffDept,
+          as: "staffDept",
+          required: true,
+          attributes: ["_id", "staff_id", "department_id"],
+          include: [
+            { model: Staff, as: "staff", attributes: STAFF_SUMMARY_ATTRIBUTES },
+            {
+              model: Department,
+              as: "department",
+              required: true,
+              attributes: ["_id", "project_id", "name"],
+              include: [{ model: Project, as: "project", attributes: ["_id", "name"] }],
+            },
+          ],
+        },
+        { model: ProjectTag, as: "tag", attributes: ["_id", "project_id", "name"] },
+      ],
+      distinct: true,
+      order: [["created_at", "DESC"], ["_id", "ASC"]],
+      limit,
+      offset: (page - 1) * limit,
+    });
+
+    return { rows: rows.map(listItem), meta: { page, limit, total: Array.isArray(count) ? count.length : count } };
   }
 
-  /** #43 — GET /reimbursements/:id. The receipt_link resolution below is already real R2 —
-   *  only the reimbursement record itself and its history are mocked. */
-  static async getById(reimbursementId) {
-    // TODO(mock): load the real row + details + full reimbursement_updatestatus history.
-    const record = fixtures.reimbursement({ _id: reimbursementId });
-    return {
-      ...record,
-      receipt_link: record.receipt_link ? await R2.presignedUrl("receipts", record.receipt_link) : null,
-      history: fixtures.reimbursementStatusHistory(reimbursementId, record.latest_status),
-    };
+  /** #43 — GET /reimbursements/:id */
+  static async getById(reimbursementId, scope = {}) {
+    const { Reimbursement, ReimbursementDetail, ReimbursementStatus, StaffDept, Staff, Department, Project, ProjectTag, BankAccount } =
+      require("../models");
+    const reimbursement = await Reimbursement.findByPk(reimbursementId, {
+      include: [
+        { model: ReimbursementDetail, as: "details", attributes: ["_id", "title", "amount"] },
+        {
+          model: ReimbursementStatus,
+          as: "history",
+          separate: true,
+          include: [{ model: Staff, as: "staff", attributes: STAFF_SUMMARY_ATTRIBUTES }],
+          order: [["created_at", "ASC"]],
+        },
+        {
+          model: StaffDept,
+          as: "staffDept",
+          include: [
+            { model: Staff, as: "staff", attributes: STAFF_SUMMARY_ATTRIBUTES },
+            { model: Department, as: "department", include: [{ model: Project, as: "project" }] },
+          ],
+        },
+        { model: ProjectTag, as: "tag" },
+        { model: BankAccount, as: "bankAccount" },
+      ],
+    });
+    if (!reimbursement) throw ApiError.notFound("Reimbursement not found.");
+
+    const departmentId = reimbursement.staffDept.department_id;
+    const projectId = reimbursement.staffDept.department.project_id;
+    const isRequester = reimbursement.staffDept.staff_id === scope.staffId;
+    const wasApprover = reimbursement.history.some((entry) => entry.staff_id === scope.staffId);
+    const isHead = scopeCovers(scopeValues(scope, "headOf", "head_of"), departmentId);
+    const isFinance = scopeCovers(scopeValues(scope, "financeOf", "finance_of"), projectId);
+    if (!(isRequester || wasApprover || isHead || isFinance || scope.isGlobal)) {
+      throw ApiError.forbidden("You don't have access to this reimbursement.");
+    }
+
+    const canSeeFullBankAccount =
+      isRequester || scope.isGlobal || scopeCovers(scopeValues(scope, "financeOf", "finance_of"), projectId, { wildcard: false });
+    return detailJSON(reimbursement, { canSeeFullBankAccount });
   }
 
   /** #44 — PATCH /reimbursements/:id */
-  static async update(reimbursementId, patch, currentStatus = "waiting") {
-    // Real already: the waiting/rejected editability window is a genuine check — the
-    // `currentStatus` param is what's mocked (see the controller's `?mock_status=` escape
-    // hatch), since there's no real row to read the status off yet.
-    if (!["waiting", "rejected"].includes(currentStatus)) {
-      throw new ApiError(422, "INVALID_TRANSITION", "Only editable while waiting or rejected.");
+  static async update(reimbursementId, patch, { staffId }) {
+    const { Reimbursement, ReimbursementDetail, StaffDept, Department, ProjectTag, BankAccount, sequelize } = require("../models");
+    const reimbursement = await Reimbursement.findByPk(reimbursementId, {
+      include: [
+        { model: ReimbursementDetail, as: "details" },
+        { model: StaffDept, as: "staffDept", include: [{ model: Department, as: "department" }] },
+      ],
+    });
+    if (!reimbursement) throw ApiError.notFound("Reimbursement not found.");
+    if (reimbursement.staffDept.staff_id !== staffId) throw ApiError.forbidden("Only the requester can edit this reimbursement.");
+    assertEditable(reimbursement.latest_status);
+
+    const projectId = reimbursement.staffDept.department.project_id;
+    if (hasOwn(patch, "tag_id") && patch.tag_id !== null) {
+      const tag = await ProjectTag.findOne({ where: { _id: patch.tag_id, project_id: projectId } });
+      if (!tag) throw new ApiError(422, "TAG_PROJECT_MISMATCH", "tag_id does not belong to this reimbursement's project.");
     }
-    // TODO(mock): full-replace details + $set the other fields on the real row inside a
-    // transaction, instead of echoing the patch onto a fixture.
-    return fixtures.reimbursement({ _id: reimbursementId, ...patch });
+    if (hasOwn(patch, "banking_id") && patch.banking_id !== null) {
+      const account = await BankAccount.findOne({ where: { _id: patch.banking_id, staff_id: staffId } });
+      if (!account) throw ApiError.forbidden("banking_id must be a live account you own.");
+    }
+
+    await sequelize.transaction(async (transaction) => {
+      for (const field of ["purpose", "tag_id", "banking_id"]) {
+        if (hasOwn(patch, field)) reimbursement[field] = patch[field];
+      }
+      if (["purpose", "tag_id", "banking_id"].some((field) => hasOwn(patch, field))) {
+        await reimbursement.save({ transaction });
+      }
+      if (hasOwn(patch, "details")) {
+        await ReimbursementDetail.destroy({ where: { reimbursement_id: reimbursementId }, transaction });
+        await ReimbursementDetail.bulkCreate(
+          patch.details.map((detail) => ({ reimbursement_id: reimbursementId, title: detail.title, amount: detail.amount })),
+          { transaction }
+        );
+      }
+    });
+
+    const updated = await Reimbursement.findByPk(reimbursementId, {
+      include: [
+        { model: ReimbursementDetail, as: "details" },
+        { model: StaffDept, as: "staffDept", include: [{ model: Department, as: "department" }] },
+      ],
+    });
+    const budget = await budgetProjection(updated.staffDept.department, reimbursementAmount(updated), reimbursementId);
+    return { record: await detailJSON(updated, { canSeeFullBankAccount: true }), meta: { budget } };
   }
 
   /** #45 — DELETE /reimbursements/:id */
-  static async cancel(_reimbursementId, currentStatus = "waiting") {
-    // Real already: this is the actual Approval.helper.js transition table doing real work —
-    // throws 422 INVALID_TRANSITION for real if `currentStatus -> delete` isn't a valid edge.
-    ApprovalHelper.assertTransition(currentStatus, "delete");
-    // TODO(mock): insert the real `delete` status row instead of a no-op.
+  static async cancel(reimbursementId, { staffId }) {
+    const { Reimbursement, ReimbursementStatus, StaffDept } = require("../models");
+    const reimbursement = await Reimbursement.findByPk(reimbursementId, {
+      include: [{ model: StaffDept, as: "staffDept", attributes: ["staff_id"] }],
+    });
+    if (!reimbursement) throw ApiError.notFound("Reimbursement not found.");
+    if (reimbursement.staffDept.staff_id !== staffId) throw ApiError.forbidden("Only the requester can cancel this reimbursement.");
+    ApprovalHelper.assertTransition(reimbursement.latest_status, "delete");
+    await ReimbursementStatus.create({ reimbursement_id: reimbursementId, status: "delete", staff_id: staffId });
     return null;
   }
 
-  /** #46 — POST /reimbursements/:id/receipt. Already fully real — the R2 upload below
-   *  genuinely happens (see api/README.md). Only the editability check's `currentStatus`
-   *  input and the final `$set receipt_link` write-back are mocked. */
-  static async uploadReceipt(reimbursementId, file, currentStatus = "waiting") {
-    if (!["waiting", "rejected"].includes(currentStatus)) {
-      throw new ApiError(422, "INVALID_TRANSITION", "Receipt can only be attached while waiting or rejected.");
-    }
+  /** #46 — POST /reimbursements/:id/receipt */
+  static async uploadReceipt(reimbursementId, file, { staffId }) {
+    const { Reimbursement, StaffDept, Department } = require("../models");
+    const reimbursement = await Reimbursement.findByPk(reimbursementId, {
+      include: [{ model: StaffDept, as: "staffDept", include: [{ model: Department, as: "department" }] }],
+    });
+    if (!reimbursement) throw ApiError.notFound("Reimbursement not found.");
+    if (reimbursement.staffDept.staff_id !== staffId) throw ApiError.forbidden("Only the requester can upload this receipt.");
+    assertEditable(reimbursement.latest_status, "Receipt can only be attached while waiting or rejected.");
     if (!file) throw ApiError.validation("receipt file is required.", "receipt");
-    const ext = file.mimetype === "application/pdf" ? "pdf" : "jpg";
-    const key = R2.buildKey("receipts", "project", reimbursementId, ext);
-    await R2.upload("receipts", key, file.buffer, file.mimetype);
-    // TODO(mock): $set reimbursement.receipt_link = key on the real row. The R2 upload above
-    // needs no changes when this goes real.
+    if (!Buffer.isBuffer(file.buffer) || file.buffer.length > MAX_RECEIPT_BYTES || file.size > MAX_RECEIPT_BYTES) {
+      throw ApiError.validation("Receipt must be 10 MB or smaller.", "receipt");
+    }
+    const detected = detectReceipt(file.buffer);
+    if (!detected) throw ApiError.validation("Receipt must be a PDF, PNG, or JPEG file.", "receipt");
+
+    const projectId = reimbursement.staffDept.department.project_id;
+    const key = R2.buildKey("receipts", projectId, reimbursementId, detected.extension);
+    await R2.upload("receipts", key, file.buffer, detected.contentType);
+    reimbursement.receipt_link = key;
+    await reimbursement.save();
     return { receipt_link: await R2.presignedUrl("receipts", key) };
   }
 

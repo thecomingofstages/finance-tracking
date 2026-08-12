@@ -11,7 +11,7 @@ const auth = [verifyJWT, resolveScope];
 // #41
 router.post("/", ...auth, Validate.body(schema.create), ctrl.create);
 // #42
-router.get("/", ...auth, ctrl.list);
+router.get("/", ...auth, Validate.query(schema.list), ctrl.list);
 // #49 — before /:id so "import" isn't parsed as an id. multipart, no Validate.body — the
 // file itself is checked in Reimbursement.helper.js#bulkImport, not a zod object schema.
 router.post("/import", ...auth, upload.csvFile, ctrl.bulkImport);
