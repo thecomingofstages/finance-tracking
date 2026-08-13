@@ -1,14 +1,32 @@
 const request = require("supertest");
+const { Op } = require("sequelize");
 
 jest.mock("../src/app/models", () => ({
-  Project: { findByPk: jest.fn(), create: jest.fn() },
-  ProjectTag: { findByPk: jest.fn(), findOne: jest.fn(), count: jest.fn() },
-  Department: { findByPk: jest.fn(), findOne: jest.fn(), count: jest.fn() },
-  Source: { findByPk: jest.fn(), findOne: jest.fn(), findAll: jest.fn(), count: jest.fn(), create: jest.fn() },
+  Project: { findByPk: jest.fn(), findAndCountAll: jest.fn(), create: jest.fn() },
+  ProjectTag: {
+    findByPk: jest.fn(),
+    findOne: jest.fn(),
+    findAll: jest.fn(),
+    count: jest.fn(),
+    bulkCreate: jest.fn(),
+  },
+  Department: {
+    findByPk: jest.fn(),
+    findOne: jest.fn(),
+    findAll: jest.fn(),
+    count: jest.fn(),
+    bulkCreate: jest.fn(),
+  },
+  Source: { findByPk: jest.fn(), findOne: jest.fn(), count: jest.fn(), create: jest.fn() },
   Reimbursement: { count: jest.fn() },
-  StaffDept: { count: jest.fn() },
+  Staff: {},
+  StaffDept: { findAll: jest.fn(), count: jest.fn() },
   Payment: { count: jest.fn() },
-  sequelize: { query: jest.fn(), QueryTypes: { SELECT: "SELECT" } },
+  sequelize: {
+    query: jest.fn(),
+    transaction: jest.fn((callback) => callback({ id: "transaction" })),
+    QueryTypes: { SELECT: "SELECT" },
+  },
 }));
 jest.mock("../src/app/middleware/RateLimit.middleware", () => ({
   authAttempts: (req, res, next) => next(),
@@ -17,6 +35,7 @@ jest.mock("../src/app/middleware/RateLimit.middleware", () => ({
 
 const { Project, ProjectTag, Department, Source, Reimbursement, StaffDept, Payment, sequelize } = require("../src/app/models");
 const { buildApp } = require("./helpers/app");
+const ProjectHelper = require("../src/app/helpers/Project.helper");
 const JWT = require("../src/app/utils/JWT.util");
 
 const app = buildApp();
@@ -45,6 +64,355 @@ beforeEach(() => {
   // it queued and leak into the next test. resetAllMocks clears queued implementations too.
   jest.resetAllMocks();
   sequelize.query.mockResolvedValue([]);
+  sequelize.transaction.mockImplementation((callback) => callback({ id: "transaction" }));
+});
+
+describe("GET /v1/projects (#17)", () => {
+  it("returns paginated project summaries", async () => {
+    Project.findAndCountAll.mockResolvedValueOnce({
+      rows: [
+        makeRecord({
+          _id: "p2",
+          name: "TCOS 2027",
+          allocated_budget: 6000000,
+          total_income: 1000000,
+          total_expense: 500000,
+        }),
+      ],
+      count: 3,
+    });
+
+    const res = await request(app)
+      .get("/v1/projects?page=2&limit=1")
+      .set("Authorization", auth);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual([
+      expect.objectContaining({ _id: "p2", name: "TCOS 2027", allocated_budget: 6000000 }),
+    ]);
+    expect(res.body.meta).toEqual({ page: 2, limit: 1, total: 3 });
+    expect(Project.findAndCountAll).toHaveBeenCalledWith(
+      expect.objectContaining({
+        attributes: ["_id", "name", "allocated_budget", "total_income", "total_expense"],
+        limit: 1,
+        offset: 1,
+      })
+    );
+  });
+
+  it("400s invalid pagination", async () => {
+    const res = await request(app).get("/v1/projects?page=0&limit=101").set("Authorization", auth);
+    expect(res.status).toBe(400);
+    expect(Project.findAndCountAll).not.toHaveBeenCalled();
+  });
+
+  it("scopes non-global callers to their unique project memberships", async () => {
+    Project.findAndCountAll.mockResolvedValueOnce({ rows: [], count: 0 });
+
+    await ProjectHelper.list(
+      { page: 1, limit: 20 },
+      {
+        isGlobal: false,
+        memberships: [{ projectId: "p1" }, { projectId: "p1" }, { projectId: "p2" }],
+        financeOf: [],
+        managerOf: [],
+      }
+    );
+
+    expect(Project.findAndCountAll).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { _id: { [Op.in]: ["p1", "p2"] } } })
+    );
+  });
+
+  it("401s without a bearer token", async () => {
+    const res = await request(app).get("/v1/projects");
+    expect(res.status).toBe(401);
+  });
+});
+
+describe("GET /v1/projects/:id (#19)", () => {
+  it("returns the full project record", async () => {
+    Project.findByPk.mockResolvedValueOnce(
+      makeRecord({ _id: "p1", name: "TCOS 2026", description: "Annual event", allocated_budget: 5000000 })
+    );
+
+    const res = await request(app).get("/v1/projects/p1").set("Authorization", auth);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toMatchObject({
+      _id: "p1",
+      name: "TCOS 2026",
+      description: "Annual event",
+      allocated_budget: 5000000,
+    });
+  });
+
+  it("404s an unknown project", async () => {
+    Project.findByPk.mockResolvedValueOnce(null);
+    const res = await request(app).get("/v1/projects/ghost").set("Authorization", auth);
+    expect(res.status).toBe(404);
+  });
+});
+
+describe("GET /v1/projects/:id/tags (#22)", () => {
+  it("returns the project's live tags", async () => {
+    Project.findByPk.mockResolvedValueOnce(makeRecord({ _id: "p1" }));
+    ProjectTag.findAll.mockResolvedValueOnce([
+      makeRecord({ _id: "t1", project_id: "p1", name: "Venue", allocated_budget: 2000000 }),
+    ]);
+
+    const res = await request(app).get("/v1/projects/p1/tags").set("Authorization", auth);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual([
+      expect.objectContaining({ _id: "t1", project_id: "p1", name: "Venue" }),
+    ]);
+    expect(ProjectTag.findAll).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { project_id: "p1" } })
+    );
+  });
+
+  it("404s when the project does not exist", async () => {
+    Project.findByPk.mockResolvedValueOnce(null);
+    const res = await request(app).get("/v1/projects/ghost/tags").set("Authorization", auth);
+    expect(res.status).toBe(404);
+    expect(ProjectTag.findAll).not.toHaveBeenCalled();
+  });
+});
+
+describe("POST /v1/projects/:id/tags (#23)", () => {
+  it("creates all tags in one transaction and applies financial defaults", async () => {
+    Project.findByPk.mockResolvedValueOnce(makeRecord({ _id: "p1" }));
+    ProjectTag.findAll.mockResolvedValueOnce([]);
+    ProjectTag.bulkCreate.mockImplementationOnce(async (rows) =>
+      rows.map((row, index) => makeRecord({ _id: `t${index + 1}`, ...row }))
+    );
+
+    const res = await request(app)
+      .post("/v1/projects/p1/tags")
+      .set("Authorization", auth)
+      .send({ tags: [{ name: "Venue", allocated_budget: 2000000 }, { name: "Food" }] });
+
+    expect(res.status).toBe(201);
+    expect(res.body.data).toHaveLength(2);
+    expect(ProjectTag.bulkCreate).toHaveBeenCalledWith(
+      [
+        expect.objectContaining({
+          project_id: "p1",
+          name: "Venue",
+          allocated_budget: 2000000,
+          total_income: 0,
+          total_expense: 0,
+        }),
+        expect.objectContaining({ project_id: "p1", name: "Food", allocated_budget: 0 }),
+      ],
+      expect.objectContaining({ transaction: { id: "transaction" }, returning: true })
+    );
+    expect(sequelize.transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it("409s a name that already exists in the project and reports its index", async () => {
+    Project.findByPk.mockResolvedValueOnce(makeRecord({ _id: "p1" }));
+    ProjectTag.findAll.mockResolvedValueOnce([makeRecord({ name: "Venue" })]);
+
+    const res = await request(app)
+      .post("/v1/projects/p1/tags")
+      .set("Authorization", auth)
+      .send({ tags: [{ name: "Food" }, { name: "Venue" }] });
+
+    expect(res.status).toBe(409);
+    expect(res.body.error).toMatchObject({ code: "DUPLICATE_TAG", field: "tags.1.name" });
+    expect(ProjectTag.bulkCreate).not.toHaveBeenCalled();
+  });
+
+  it("409s duplicate names within the request before opening a transaction", async () => {
+    const res = await request(app)
+      .post("/v1/projects/p1/tags")
+      .set("Authorization", auth)
+      .send({ tags: [{ name: "Venue" }, { name: "Venue" }] });
+
+    expect(res.status).toBe(409);
+    expect(res.body.error).toMatchObject({ code: "DUPLICATE_TAG", field: "tags.1.name" });
+    expect(sequelize.transaction).not.toHaveBeenCalled();
+  });
+
+  it("400s an empty tag array", async () => {
+    const res = await request(app)
+      .post("/v1/projects/p1/tags")
+      .set("Authorization", auth)
+      .send({ tags: [] });
+    expect(res.status).toBe(400);
+    expect(ProjectTag.bulkCreate).not.toHaveBeenCalled();
+  });
+
+  it("404s an unknown project without inserting tags", async () => {
+    Project.findByPk.mockResolvedValueOnce(null);
+    const res = await request(app)
+      .post("/v1/projects/ghost/tags")
+      .set("Authorization", auth)
+      .send({ tags: [{ name: "Venue" }] });
+    expect(res.status).toBe(404);
+    expect(ProjectTag.bulkCreate).not.toHaveBeenCalled();
+  });
+});
+
+describe("GET /v1/projects/:id/departments (#26)", () => {
+  it("returns the project's live departments", async () => {
+    Project.findByPk.mockResolvedValueOnce(makeRecord({ _id: "p1" }));
+    Department.findAll.mockResolvedValueOnce([
+      makeRecord({ _id: "d1", project_id: "p1", name: "Finance", allocated_budget: 1000000 }),
+    ]);
+
+    const res = await request(app).get("/v1/projects/p1/departments").set("Authorization", auth);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual([
+      expect.objectContaining({ _id: "d1", project_id: "p1", name: "Finance" }),
+    ]);
+    expect(Department.findAll).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { project_id: "p1" } })
+    );
+  });
+
+  it("404s when the project does not exist", async () => {
+    Project.findByPk.mockResolvedValueOnce(null);
+    const res = await request(app).get("/v1/projects/ghost/departments").set("Authorization", auth);
+    expect(res.status).toBe(404);
+    expect(Department.findAll).not.toHaveBeenCalled();
+  });
+});
+
+describe("POST /v1/projects/:id/departments (#27)", () => {
+  it("creates all departments in one transaction and applies financial defaults", async () => {
+    Project.findByPk.mockResolvedValueOnce(makeRecord({ _id: "p1" }));
+    Department.findAll.mockResolvedValueOnce([]);
+    Department.bulkCreate.mockImplementationOnce(async (rows) =>
+      rows.map((row, index) => makeRecord({ _id: `d${index + 1}`, ...row }))
+    );
+
+    const res = await request(app)
+      .post("/v1/projects/p1/departments")
+      .set("Authorization", auth)
+      .send({ departments: [{ name: "Finance", allocated_budget: 1000000 }, { name: "Stage" }] });
+
+    expect(res.status).toBe(201);
+    expect(res.body.data).toHaveLength(2);
+    expect(Department.bulkCreate).toHaveBeenCalledWith(
+      [
+        expect.objectContaining({
+          project_id: "p1",
+          name: "Finance",
+          allocated_budget: 1000000,
+          total_expense: 0,
+        }),
+        expect.objectContaining({ project_id: "p1", name: "Stage", allocated_budget: 0 }),
+      ],
+      expect.objectContaining({ transaction: { id: "transaction" }, returning: true })
+    );
+  });
+
+  it("409s a name that already exists in the project and reports its index", async () => {
+    Project.findByPk.mockResolvedValueOnce(makeRecord({ _id: "p1" }));
+    Department.findAll.mockResolvedValueOnce([makeRecord({ name: "Finance" })]);
+
+    const res = await request(app)
+      .post("/v1/projects/p1/departments")
+      .set("Authorization", auth)
+      .send({ departments: [{ name: "Stage" }, { name: "Finance" }] });
+
+    expect(res.status).toBe(409);
+    expect(res.body.error).toMatchObject({
+      code: "DUPLICATE_DEPARTMENT",
+      field: "departments.1.name",
+    });
+    expect(Department.bulkCreate).not.toHaveBeenCalled();
+  });
+
+  it("409s duplicate names within the request", async () => {
+    const res = await request(app)
+      .post("/v1/projects/p1/departments")
+      .set("Authorization", auth)
+      .send({ departments: [{ name: "Finance" }, { name: "Finance" }] });
+    expect(res.status).toBe(409);
+    expect(res.body.error).toMatchObject({
+      code: "DUPLICATE_DEPARTMENT",
+      field: "departments.1.name",
+    });
+    expect(sequelize.transaction).not.toHaveBeenCalled();
+  });
+
+  it("400s an empty department array", async () => {
+    const res = await request(app)
+      .post("/v1/projects/p1/departments")
+      .set("Authorization", auth)
+      .send({ departments: [] });
+    expect(res.status).toBe(400);
+    expect(Department.bulkCreate).not.toHaveBeenCalled();
+  });
+
+  it("404s an unknown project without inserting departments", async () => {
+    Project.findByPk.mockResolvedValueOnce(null);
+    const res = await request(app)
+      .post("/v1/projects/ghost/departments")
+      .set("Authorization", auth)
+      .send({ departments: [{ name: "Finance" }] });
+    expect(res.status).toBe(404);
+    expect(Department.bulkCreate).not.toHaveBeenCalled();
+  });
+});
+
+describe("GET /v1/projects/:id/staff (#30)", () => {
+  it("joins memberships to safe staff and department fields", async () => {
+    Project.findByPk.mockResolvedValueOnce(makeRecord({ _id: "p1" }));
+    StaffDept.findAll.mockResolvedValueOnce([
+      makeRecord({
+        _id: "sd1",
+        staff_id: "staff1",
+        department_id: "d1",
+        is_head: false,
+        is_finance: true,
+        is_manager: false,
+        department: { _id: "d1", name: "Finance" },
+        staff: {
+          _id: "staff1",
+          title: "นาย",
+          first_name: "Somchai",
+          last_name: "Jaidee",
+          nickname: "Golf",
+          password_hash: "must-not-leak",
+        },
+      }),
+    ]);
+
+    const res = await request(app).get("/v1/projects/p1/staff").set("Authorization", auth);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual([
+      {
+        _id: "staff1",
+        title: "นาย",
+        first_name: "Somchai",
+        last_name: "Jaidee",
+        nickname: "Golf",
+        department_id: "d1",
+        department: "Finance",
+        is_head: false,
+        is_finance: true,
+        is_manager: false,
+      },
+    ]);
+    expect(JSON.stringify(res.body)).not.toContain("password_hash");
+    expect(StaffDept.findAll).toHaveBeenCalledWith(
+      expect.objectContaining({ include: expect.any(Array) })
+    );
+  });
+
+  it("404s when the project does not exist", async () => {
+    Project.findByPk.mockResolvedValueOnce(null);
+    const res = await request(app).get("/v1/projects/ghost/staff").set("Authorization", auth);
+    expect(res.status).toBe(404);
+    expect(StaffDept.findAll).not.toHaveBeenCalled();
+  });
 });
 
 describe("GET /v1/projects/:id/sources (#33)", () => {

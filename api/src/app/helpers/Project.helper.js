@@ -1,18 +1,67 @@
 const { Op } = require("sequelize");
 const ApiError = require("../utils/ApiError.util");
 const { db } = require("../config/init");
-const fixtures = require("../../mocks/fixtures");
 
-/**
- * Grep this file for `TODO(mock)` to find every spot returning fixture data instead of
- * querying Postgres. Endpoint numbers (#N) match docs/backend/03-api-spec.md §2.
- */
+function toPlain(record) {
+  return typeof record?.toJSON === "function" ? record.toJSON() : record;
+}
+
+async function ensureProject(Project, projectId, options) {
+  const project = await Project.findByPk(projectId, options);
+  if (!project) throw ApiError.notFound("Project not found.");
+  return project;
+}
+
+function duplicateIndex(items) {
+  const seen = new Set();
+  return items.findIndex(({ name }) => {
+    if (seen.has(name)) return true;
+    seen.add(name);
+    return false;
+  });
+}
+
+function throwDuplicate(kind, field, index) {
+  const code = kind === "tag" ? "DUPLICATE_TAG" : "DUPLICATE_DEPARTMENT";
+  const error = ApiError.conflict(`A ${kind} with this name already exists in this project.`, code);
+  error.field = `${field}.${index}.name`;
+  throw error;
+}
+
+function hasGlobalProjectAccess(scope = {}) {
+  return (
+    scope.isGlobal ||
+    scope.financeOf?.includes("*") ||
+    scope.finance_of?.includes("*") ||
+    scope.managerOf?.includes("*") ||
+    scope.manager_of?.includes("*")
+  );
+}
+
+function scopedProjectIds(scope = {}) {
+  return [
+    ...(scope.memberships || []).map((membership) => membership.projectId ?? membership.project_id),
+    ...(scope.financeOf || scope.finance_of || []),
+    ...(scope.managerOf || scope.manager_of || []),
+  ].filter((projectId) => projectId && projectId !== "*");
+}
+
+/** Endpoint numbers (#N) match docs/backend/03-api-spec.md §2. */
 class ProjectHelper {
   /** #17 — GET /projects */
-  static async list(_query) {
-    // TODO(mock): scope to projects the caller belongs to unless finance/owner/admin (doc 03 §6).
-    const rows = [fixtures.project(), fixtures.project({ name: "Merch Drop 2026" })];
-    return { rows, meta: fixtures.pagination(rows.length) };
+  static async list({ page = 1, limit = 20 }, scope) {
+    const { Project } = require("../models");
+    const where = hasGlobalProjectAccess(scope)
+      ? undefined
+      : { _id: { [Op.in]: [...new Set(scopedProjectIds(scope))] } };
+    const { rows, count } = await Project.findAndCountAll({
+      attributes: ["_id", "name", "allocated_budget", "total_income", "total_expense"],
+      ...(where && { where }),
+      order: [["created_at", "DESC"], ["_id", "ASC"]],
+      limit,
+      offset: (page - 1) * limit,
+    });
+    return { rows: rows.map(toPlain), meta: { page, limit, total: count } };
   }
 
   /** #18 — POST /projects (doc 03 §6). Real. Access control (finance/admin) still goes
@@ -32,8 +81,8 @@ class ProjectHelper {
 
   /** #19 — GET /projects/:id */
   static async getById(projectId) {
-    // TODO(mock): load the real row, 404 if not found or soft-deleted.
-    return fixtures.project({ _id: projectId });
+    const { Project } = require("../models");
+    return toPlain(await ensureProject(Project, projectId));
   }
 
   /** #20 — PATCH /projects/:id (doc 03 §6). Real. Still no budget_changes audit table (doc 05
@@ -85,16 +134,46 @@ class ProjectHelper {
 
   /** #22 — GET /projects/:id/tags */
   static async listTags(projectId) {
-    // TODO(mock): query project_tag by project_id instead of two hardcoded fixtures.
-    return [fixtures.tag({ project_id: projectId }), fixtures.tag({ project_id: projectId, name: "ค่าอาหาร", allocated_budget: 2000000 })];
+    const { Project, ProjectTag } = require("../models");
+    await ensureProject(Project, projectId);
+    const rows = await ProjectTag.findAll({
+      where: { project_id: projectId },
+      order: [["name", "ASC"], ["_id", "ASC"]],
+    });
+    return rows.map(toPlain);
   }
 
   /** #23 — POST /projects/:id/tags (bulk) */
   static async createTags(projectId, tags) {
     if (!Array.isArray(tags) || !tags.length) throw ApiError.validation("tags must be a non-empty array.", "tags");
-    // TODO(mock): 409 DUPLICATE_TAG on a name collision within the project, then insert all
-    // rows in one transaction — partial success on a bulk endpoint is a support burden.
-    return tags.map((t) => fixtures.tag({ project_id: projectId, ...t, total_income: 0, total_expense: 0 }));
+    const repeatedAt = duplicateIndex(tags);
+    if (repeatedAt >= 0) throwDuplicate("tag", "tags", repeatedAt);
+
+    const { Project, ProjectTag, sequelize } = require("../models");
+    return sequelize.transaction(async (transaction) => {
+      await ensureProject(Project, projectId, { transaction });
+      const names = tags.map(({ name }) => name);
+      const existing = await ProjectTag.findAll({
+        attributes: ["name"],
+        where: { project_id: projectId, name: { [Op.in]: names } },
+        transaction,
+      });
+      if (existing.length) {
+        const existingNames = new Set(existing.map((tag) => toPlain(tag).name));
+        throwDuplicate("tag", "tags", tags.findIndex(({ name }) => existingNames.has(name)));
+      }
+      const rows = await ProjectTag.bulkCreate(
+        tags.map(({ name, allocated_budget = 0 }) => ({
+          project_id: projectId,
+          name,
+          allocated_budget,
+          total_income: 0,
+          total_expense: 0,
+        })),
+        { transaction, returning: true }
+      );
+      return rows.map(toPlain);
+    });
   }
 
   /** #24 — PATCH /tags/:id (doc 03 §6). Real. No UNIQUE constraint on project_tag.name at the
@@ -133,8 +212,13 @@ class ProjectHelper {
 
   /** #26 — GET /projects/:id/departments */
   static async listDepartments(projectId) {
-    // TODO(mock): query department by project_id instead of two hardcoded fixtures.
-    return [fixtures.department({ project_id: projectId }), fixtures.department({ project_id: projectId, name: "ฝ่ายประชาสัมพันธ์", allocated_budget: 800000 })];
+    const { Project, Department } = require("../models");
+    await ensureProject(Project, projectId);
+    const rows = await Department.findAll({
+      where: { project_id: projectId },
+      order: [["name", "ASC"], ["_id", "ASC"]],
+    });
+    return rows.map(toPlain);
   }
 
   /** #27 — POST /projects/:id/departments (bulk) */
@@ -142,8 +226,37 @@ class ProjectHelper {
     if (!Array.isArray(departments) || !departments.length) {
       throw ApiError.validation("departments must be a non-empty array.", "departments");
     }
-    // TODO(mock): 409 DUPLICATE_DEPARTMENT on a name collision, insert all in one transaction.
-    return departments.map((d) => fixtures.department({ project_id: projectId, ...d, total_expense: 0 }));
+    const repeatedAt = duplicateIndex(departments);
+    if (repeatedAt >= 0) throwDuplicate("department", "departments", repeatedAt);
+
+    const { Project, Department, sequelize } = require("../models");
+    return sequelize.transaction(async (transaction) => {
+      await ensureProject(Project, projectId, { transaction });
+      const names = departments.map(({ name }) => name);
+      const existing = await Department.findAll({
+        attributes: ["name"],
+        where: { project_id: projectId, name: { [Op.in]: names } },
+        transaction,
+      });
+      if (existing.length) {
+        const existingNames = new Set(existing.map((department) => toPlain(department).name));
+        throwDuplicate(
+          "department",
+          "departments",
+          departments.findIndex(({ name }) => existingNames.has(name))
+        );
+      }
+      const rows = await Department.bulkCreate(
+        departments.map(({ name, allocated_budget = 0 }) => ({
+          project_id: projectId,
+          name,
+          allocated_budget,
+          total_expense: 0,
+        })),
+        { transaction, returning: true }
+      );
+      return rows.map(toPlain);
+    });
   }
 
   /** #28 — PATCH /departments/:id (doc 03 §6). Real. Same reasoning as updateTag — no DB-level
@@ -189,13 +302,43 @@ class ProjectHelper {
   }
 
   /** #30 — GET /projects/:id/staff */
-  static async listStaff(_projectId) {
-    // TODO(mock): join staff_dept -> staff for every department under this project instead
-    // of two hardcoded people.
-    return [
-      { ...fixtures.staff(), department: "ฝ่ายเวที", is_head: true, is_finance: false, is_manager: false },
-      { ...fixtures.staff({ nickname: "Nok" }), department: "ฝ่ายการเงิน", is_head: false, is_finance: true, is_manager: false },
-    ];
+  static async listStaff(projectId) {
+    const { Project, StaffDept, Department, Staff } = require("../models");
+    await ensureProject(Project, projectId);
+    const memberships = await StaffDept.findAll({
+      attributes: ["_id", "staff_id", "department_id", "is_head", "is_finance", "is_manager"],
+      include: [
+        {
+          model: Department,
+          as: "department",
+          required: true,
+          attributes: ["_id", "name"],
+          where: { project_id: projectId },
+        },
+        {
+          model: Staff,
+          as: "staff",
+          required: true,
+          attributes: ["_id", "title", "first_name", "last_name", "nickname"],
+        },
+      ],
+      order: [["department_id", "ASC"], ["staff_id", "ASC"]],
+    });
+    return memberships.map((membership) => {
+      const row = toPlain(membership);
+      return {
+        _id: row.staff._id,
+        title: row.staff.title,
+        first_name: row.staff.first_name,
+        last_name: row.staff.last_name,
+        nickname: row.staff.nickname,
+        department_id: row.department_id,
+        department: row.department.name,
+        is_head: row.is_head,
+        is_finance: row.is_finance,
+        is_manager: row.is_manager,
+      };
+    });
   }
 }
 

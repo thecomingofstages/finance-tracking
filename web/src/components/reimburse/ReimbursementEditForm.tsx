@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, ChangeEvent } from "react";
+import { formatCurrencyTH } from "@/lib/format";
 
 export interface EditDetailItem {
   id?: string;
@@ -140,7 +141,7 @@ export const ReimbursementEditForm: React.FC<ReimbursementEditFormProps> = ({
         <div className="mt-3 text-right">
           <span className="text-sm text-slate-500">ยอดรวม: </span>
           <span className="text-base font-bold text-slate-900">
-            ฿{totalAmount.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            {formatCurrencyTH(totalAmount, 2)}
           </span>
         </div>
       </div>

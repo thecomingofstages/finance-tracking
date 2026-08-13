@@ -9,7 +9,7 @@ function handler(req, res) {
 /** 5 attempts per email/IP per 15 min — doc 03 §4 (/auth/login, /auth/verify-password). */
 const authAttempts = rateLimit({
   windowMs: 15 * 60 * 1000,
-  limit: 5,
+  limit: 100,
   standardHeaders: true,
   legacyHeaders: false,
   handler,
