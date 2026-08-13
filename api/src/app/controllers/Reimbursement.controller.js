@@ -3,36 +3,30 @@ const { ok, created, noContent } = require("../utils/Response.util");
 const Reimbursement = require("../helpers/Reimbursement.helper");
 const Document = require("../helpers/Document.helper");
 
-// MOCK ONLY, still used by #44/#45/#46 (update/cancel/uploadReceipt) — those three stay
-// fixture-based this pass. `?mock_status=waiting|head_approve|...` lets FE exercise every
-// branch (e.g. hit PATCH with mock_status=head_approve to see the real 422 INVALID_TRANSITION
-// response). Defaults to 'waiting'. #47/#48/#49 below read the real row instead — no mock
-// status needed there anymore.
-const currentStatus = (req) => req.query.mock_status || "waiting";
-
 exports.create = asyncHandler(async (req, res) => {
   const { record, meta } = await Reimbursement.create(req.body, req.scope);
   return created(res, record, meta);
 });
 
 exports.list = asyncHandler(async (req, res) => {
-  const { rows, meta } = await Reimbursement.list(req.query);
+  const { rows, meta } = await Reimbursement.list(req.query, req.scope);
   return ok(res, rows, { meta });
 });
 
-exports.getById = asyncHandler(async (req, res) => ok(res, await Reimbursement.getById(req.params.id)));
+exports.getById = asyncHandler(async (req, res) => ok(res, await Reimbursement.getById(req.params.id, req.scope)));
 
-exports.update = asyncHandler(async (req, res) =>
-  ok(res, await Reimbursement.update(req.params.id, req.body, currentStatus(req)))
-);
+exports.update = asyncHandler(async (req, res) => {
+  const { record, meta } = await Reimbursement.update(req.params.id, req.body, req.scope);
+  return ok(res, record, { meta });
+});
 
 exports.cancel = asyncHandler(async (req, res) => {
-  await Reimbursement.cancel(req.params.id, currentStatus(req));
+  await Reimbursement.cancel(req.params.id, req.scope);
   return noContent(res);
 });
 
 exports.uploadReceipt = asyncHandler(async (req, res) =>
-  ok(res, await Reimbursement.uploadReceipt(req.params.id, req.file, currentStatus(req)))
+  ok(res, await Reimbursement.uploadReceipt(req.params.id, req.file, req.scope))
 );
 
 exports.changeStatus = asyncHandler(async (req, res) =>

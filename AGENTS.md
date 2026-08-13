@@ -142,13 +142,9 @@ For human collaborators, see the per-folder READMEs and `docs/`.
 - **What is deferred entirely:** Puppeteer/Handlebars PDF rendering
   (`api/src/app/utils/PDF.util.js` returns a placeholder PDF), real XLSX export
   (`Report.helper.js` returns CSV), Jest test suite, `eslint.config.js`.
-- **Mock-only debugging helpers (must be removed when MOCK_MODE goes away):**
-  - `?mock_status=waiting|head_approve|fin_approve|transfer|rejected` on
-    reimbursement detail routes — simulates "what if this record were
-    currently in state X."
-  - `?as_head=true` on `POST /reimbursements` — simulates the requester being
-    head of the target department, to exercise the auto-verify path from
-    doc 04 §4.
+- **Mock-only debugging helper (must be removed when MOCK_MODE goes away):**
+  `?as_head=true` on `POST /reimbursements` simulates the requester being head
+  of the target department, to exercise the auto-verify path from doc 04 §4.
 - **Layout:** `api/src/app/{config,controllers,database,helpers,middleware,models,routes,schemas,utils}/`.
   Conventional MVC-ish split. `api/src/app/middleware/Transaction.middleware.js`
   provides the per-request DB transaction wrapper.
