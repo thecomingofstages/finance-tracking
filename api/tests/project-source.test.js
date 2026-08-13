@@ -415,6 +415,78 @@ describe("GET /v1/projects/:id/staff (#30)", () => {
   });
 });
 
+describe("GET /v1/projects/:id/sources (#33)", () => {
+  const tagId = "550e8400-e29b-41d4-a716-446655440010";
+
+  it("returns sources filtered by type and tag", async () => {
+    Project.findByPk.mockResolvedValueOnce(makeRecord({ _id: "p1" }));
+    Source.findAll.mockResolvedValueOnce([
+      makeRecord({
+        _id: "s1",
+        project_id: "p1",
+        type: "enroll",
+        tag_id: tagId,
+        name: "Registration",
+        expect_amount: 50000,
+        actual_amount: 0,
+      }),
+    ]);
+
+    const res = await request(app)
+      .get(`/v1/projects/p1/sources?type=enroll&tag_id=${tagId}`)
+      .set("Authorization", auth);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual([
+      expect.objectContaining({ _id: "s1", project_id: "p1", type: "enroll", tag_id: tagId }),
+    ]);
+    expect(Source.findAll).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { project_id: "p1", type: "enroll", tag_id: tagId } })
+    );
+  });
+
+  it("queries every source in the project when filters are omitted", async () => {
+    Project.findByPk.mockResolvedValueOnce(makeRecord({ _id: "p1" }));
+    Source.findAll.mockResolvedValueOnce([]);
+
+    const res = await request(app).get("/v1/projects/p1/sources").set("Authorization", auth);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual([]);
+    expect(Source.findAll).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { project_id: "p1" } })
+    );
+  });
+
+  it("400s an unsupported source type", async () => {
+    const res = await request(app)
+      .get("/v1/projects/p1/sources?type=invalid")
+      .set("Authorization", auth);
+    expect(res.status).toBe(400);
+    expect(Source.findAll).not.toHaveBeenCalled();
+  });
+
+  it("400s an invalid tag_id", async () => {
+    const res = await request(app)
+      .get("/v1/projects/p1/sources?tag_id=not-a-uuid")
+      .set("Authorization", auth);
+    expect(res.status).toBe(400);
+    expect(Source.findAll).not.toHaveBeenCalled();
+  });
+
+  it("404s when the project does not exist", async () => {
+    Project.findByPk.mockResolvedValueOnce(null);
+    const res = await request(app).get("/v1/projects/ghost/sources").set("Authorization", auth);
+    expect(res.status).toBe(404);
+    expect(Source.findAll).not.toHaveBeenCalled();
+  });
+
+  it("401s without a bearer token", async () => {
+    const res = await request(app).get("/v1/projects/p1/sources");
+    expect(res.status).toBe(401);
+  });
+});
+
 describe("POST /v1/projects (#18)", () => {
   it("creates a project", async () => {
     Project.create.mockResolvedValueOnce(makeRecord({ name: "TCOS 2026" }));

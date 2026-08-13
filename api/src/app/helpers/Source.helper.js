@@ -1,16 +1,28 @@
 const ApiError = require("../utils/ApiError.util");
-const fixtures = require("../../mocks/fixtures");
+
+function toPlain(record) {
+  return typeof record?.toJSON === "function" ? record.toJSON() : record;
+}
 
 /**
- * Grep this file for `TODO(mock)` to find every spot returning fixture data instead of
- * querying Postgres. Endpoint numbers (#N) match docs/backend/03-api-spec.md §2.
+ * Endpoint numbers (#N) match docs/backend/03-api-spec.md §2.
  */
 class SourceHelper {
   /** #33 — GET /projects/:id/sources */
-  static async list(projectId, _query) {
-    // TODO(mock): query source by project_id (+ optional type/tag_id filters) instead of
-    // two hardcoded fixtures.
-    return [fixtures.source({ project_id: projectId }), fixtures.source({ project_id: projectId, type: "enroll", reference_id: fixtures.uuidv7(), actual_amount: 0 })];
+  static async list(projectId, { type, tag_id }) {
+    const { Project, Source } = require("../models");
+    const project = await Project.findByPk(projectId);
+    if (!project) throw ApiError.notFound("Project not found.");
+
+    const rows = await Source.findAll({
+      where: {
+        project_id: projectId,
+        ...(type && { type }),
+        ...(tag_id && { tag_id }),
+      },
+      order: [["created_at", "DESC"], ["_id", "ASC"]],
+    });
+    return rows.map(toPlain);
   }
 
   /** #34 — POST /projects/:id/sources (doc 03 §6). Real. */

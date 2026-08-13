@@ -1,10 +1,23 @@
+const { literal, where: sqlWhere } = require("sequelize");
 const ApiError = require("../utils/ApiError.util");
-const fixtures = require("../../mocks/fixtures");
+const { db } = require("../config/init");
+
+function toPlain(record) {
+  return typeof record?.toJSON === "function" ? record.toJSON() : record;
+}
+
+function latestStatusSql() {
+  return `COALESCE((
+    SELECT payment_status.status::text
+    FROM "${db.schema}"."payment_updatestatus" AS payment_status
+    WHERE payment_status.payment_id = "Payment"."_id"
+    ORDER BY payment_status.created_at DESC
+    LIMIT 1
+  ), 'waiting')`;
+}
 
 /**
- * Grep this file for `TODO(mock)` to find every spot returning fixture data instead of
- * querying Postgres. Endpoint numbers (#N) match docs/backend/03-api-spec.md §2.
- * #37 and #40 are real (doc 03 §8); #38/#39 are unchanged, still mocked.
+ * Endpoint numbers (#N) match docs/backend/03-api-spec.md §2.
  */
 class PaymentHelper {
   /** #37 — POST /payments (service-token ingress from Enroll/Merch). Idempotent on `_id`
@@ -48,18 +61,63 @@ class PaymentHelper {
   }
 
   /** #38 — GET /payments (the /checkslip queue) */
-  static async list(_projectId, _query) {
-    // TODO(mock): join payment -> latest payment_updatestatus -> source, filtered to
-    // source.project_id and (optionally) status, sorted created_at ASC. Currently returns
-    // two fixtures regardless of project_id/status/pagination passed in.
-    const rows = [fixtures.payment(), fixtures.payment({ expected_amount: 80000 })];
-    return { rows, meta: fixtures.pagination(rows.length) };
+  static async list(projectId, { status, page = 1, limit = 20 }) {
+    const { Payment, Source } = require("../models");
+    const statusExpression = latestStatusSql();
+    const { rows, count } = await Payment.findAndCountAll({
+      attributes: { include: [[literal(statusExpression), "status"]] },
+      ...(status && { where: sqlWhere(literal(statusExpression), status) }),
+      include: [
+        {
+          model: Source,
+          as: "source",
+          required: true,
+          where: { project_id: projectId },
+          attributes: ["_id", "type", "reference_id", "tag_id", "project_id", "expect_amount", "actual_amount", "name"],
+        },
+      ],
+      order: [["created_at", "ASC"], ["_id", "ASC"]],
+      limit,
+      offset: (page - 1) * limit,
+    });
+    return {
+      rows: rows.map((row) => {
+        const payment = toPlain(row);
+        return { ...payment, status: payment.status ?? "waiting" };
+      }),
+      meta: { page, limit, total: count },
+    };
   }
 
   /** #39 — GET /payments/:id */
   static async getById(paymentId) {
-    // TODO(mock): load the real row + its full payment_updatestatus history.
-    return { ...fixtures.payment({ _id: paymentId }), history: fixtures.paymentStatusHistory(paymentId) };
+    const { Payment, Source, PaymentStatus, Staff } = require("../models");
+    const payment = await Payment.findByPk(paymentId, {
+      include: [
+        {
+          model: Source,
+          as: "source",
+          required: true,
+          attributes: ["_id", "type", "reference_id", "tag_id", "project_id", "expect_amount", "actual_amount", "name"],
+        },
+        {
+          model: PaymentStatus,
+          as: "history",
+          separate: true,
+          order: [["created_at", "ASC"]],
+          include: [{ model: Staff, as: "staff", attributes: ["_id", "nickname"] }],
+        },
+      ],
+    });
+    if (!payment) throw ApiError.notFound("Payment not found.");
+
+    const result = toPlain(payment);
+    const history = result.history || [];
+    return {
+      ...result,
+      status: history.at(-1)?.status || "waiting",
+      history,
+    };
   }
 
   /** #40 — POST /payments/approve (bulk, step-up required, doc 03 §8). Idempotent per item —

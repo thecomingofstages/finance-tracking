@@ -10,6 +10,13 @@ const ingest = z.object({
   promptpay_qr_data: z.string().optional(),
 });
 
+const list = z.object({
+  project_id: z.string().uuid(),
+  status: z.enum(["waiting", "approved", "rejected"]).optional(),
+  page: z.coerce.number().int().positive().default(1),
+  limit: z.coerce.number().int().positive().max(100).default(20),
+});
+
 const decision = z.object({
   payment_id: z.string().uuid(),
   status: z.enum(["approved", "rejected"]),
@@ -17,4 +24,4 @@ const decision = z.object({
 });
 const bulkApprove = z.object({ decisions: z.array(decision).min(1) });
 
-module.exports = { ingest, bulkApprove };
+module.exports = { ingest, list, bulkApprove };

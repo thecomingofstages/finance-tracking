@@ -11,7 +11,13 @@ const auth = [verifyJWT, resolveScope];
 // #37 — service token only, never reachable with a user JWT
 router.post("/", verifyServiceToken, Validate.body(schema.ingest), ctrl.ingest);
 // #38 — no :id in this route; target comes from the required ?project_id= query param instead.
-router.get("/", ...auth, requireScope("isFinance", (req) => req.query.project_id), ctrl.list);
+router.get(
+  "/",
+  ...auth,
+  Validate.query(schema.list),
+  requireScope("isFinance", (req) => req.query.project_id),
+  ctrl.list
+);
 // #39 — :id is the payment's own id, not a project id — resolve payment -> source -> project.
 router.get(
   "/:id",
