@@ -136,9 +136,9 @@ For human collaborators, see the per-folder READMEs and `docs/`.
   exactly), request validation shape, error envelope, file upload handling,
   and **Cloudflare R2 storage** for receipts and signatures. Verify R2
   connectivity any time with `node api/scripts/check-r2.js`.
-- **What is still mocked:** every helper in `api/src/app/helpers/*.helper.js`
-  returns fixture data. Each one has a `// TODO: real implementation —` comment
-  near-verbatim from `docs/backend/03-api-spec.md`.
+- **What is still mocked:** helpers that still contain `TODO(mock)` return
+  fixture data. Reporting endpoints #50–#52 and #55–#56 use parameterized
+  Sequelize queries; #53 remains fixture-backed and #54 remains blocked.
 - **What is deferred entirely:** Puppeteer/Handlebars PDF rendering
   (`api/src/app/utils/PDF.util.js` returns a placeholder PDF), real XLSX export
   (`Report.helper.js` returns CSV), Jest test suite, `eslint.config.js`.
@@ -201,14 +201,9 @@ For human collaborators, see the per-folder READMEs and `docs/`.
   If a user "lands back on the login page after setting a password",
   that is the design — not a bug. Do not add parallel `router.push("/")`
   calls in `LoginForm.onSuccess` or `ClaimAccountForm.onSuccess`.
-- **API summary contract gap (TODO):** `api/src/app/helpers/Report.helper.js`
-  returns the same fixed mock object regardless of `MOCK_MODE` —
-  `{ total_income, total_expense, net_income, allocated_budget, … }` —
-  and never includes `net_cashflow` or `pending_count`, which the dashboard
-  reads. The FE papers over this with `??` defaults + the defensive
-  formatters above. When `Report.summary` is real-ified, make sure it
-  returns the FE-expected field names (`net_cashflow`, `pending_count`)
-  rather than the FE being asked to rename them.
+- **API summary compatibility:** `Report.summary` returns dashboard-facing
+  `net_cashflow` and `pending_count` aliases alongside the documented
+  `net_income` and `pending_slips.count` fields.
 - **Google sign-in does not create a Supabase-backed session.** Supabase Auth is
   only an identity handshake: `web/src/lib/auth/supabaseOAuth.ts` redirects to
   `/auth/v1/authorize`, `web/src/app/auth/callback/page.tsx` reads the token out

@@ -12,19 +12,19 @@ const auth = [verifyJWT, resolveScope];
 const reportProjectId = (req) => req.query.project_id;
 
 // #50
-router.get("/summary", ...auth, ctrl.summary);
+router.get("/summary", ...auth, Validate.query(schema.summary), ctrl.summary);
 // #51
-router.get("/cashflow", ...auth, requireScope("isFinanceOrOwner", reportProjectId), ctrl.cashflow);
+router.get("/cashflow", ...auth, Validate.query(schema.cashflow), requireScope("isFinanceOrOwner", reportProjectId), ctrl.cashflow);
 // #52
-router.get("/journal", ...auth, requireScope("isFinanceOrOwner", reportProjectId), ctrl.journal);
+router.get("/journal", ...auth, Validate.query(schema.journal), requireScope("isFinanceOrOwner", reportProjectId), ctrl.journal);
 // #53 — format is accepted via body or query (controller checks both); schema only
 // validates the body shape, and format is optional there for exactly that reason.
 router.post("/journal/export", ...auth, requireScope("isFinanceOrOwner", reportProjectId), Validate.body(schema.journalExport), ctrl.journalExport);
 // #54 — Blocked, see docs/backend/05-open-questions.md #1
 router.get("/ledger", ...auth, requireScope("isFinanceOrOwner", reportProjectId), ctrl.ledger);
 // #55
-router.get("/top-expenses", ...auth, ctrl.topExpenses);
+router.get("/top-expenses", ...auth, Validate.query(schema.topExpenses), ctrl.topExpenses);
 // #56
-router.get("/sponsors", ...auth, requireScope("isFinanceOrOwner", reportProjectId), ctrl.sponsors);
+router.get("/sponsors", ...auth, Validate.query(schema.sponsors), requireScope("isFinanceOrOwner", reportProjectId), ctrl.sponsors);
 
 module.exports = router;

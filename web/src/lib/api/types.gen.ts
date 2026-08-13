@@ -1878,7 +1878,11 @@ export interface paths {
         /** / page breakdown — finance/owner only (#51) */
         get: {
             parameters: {
-                query?: never;
+                query?: {
+                    project_id?: string;
+                    from?: string;
+                    to?: string;
+                };
                 header?: never;
                 path?: never;
                 cookie?: never;
@@ -1915,6 +1919,8 @@ export interface paths {
                 query?: {
                     project_id?: string;
                     month?: string;
+                    from?: string;
+                    to?: string;
                 };
                 header?: never;
                 path?: never;
