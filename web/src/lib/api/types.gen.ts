@@ -678,7 +678,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Bulk provision from CSV (#11) — admin only */
+        /**
+         * Bulk provision from CSV (#11) — admin only
+         * @description Required columns: first_name, last_name, nickname, email. Optional: title, phone, line_id, department_id (a real department._id UUID, not a name — leave blank/omit for no department, that's not an error). All-or-nothing: every row is validated — required fields, email format, duplicate email within the file, duplicate against live staff, unknown department_id — before anything is written; any failure returns the full per-row error list in error.details and inserts nothing. staff_dept was originally scoped as manual-only (docs/backend/03-api-spec.md §5); department_id added 2026-07-27 on request.
+         */
         post: {
             parameters: {
                 query?: never;
@@ -702,6 +705,7 @@ export interface paths {
                     };
                     content?: never;
                 };
+                400: components["responses"]["ValidationError"];
             };
         };
         delete?: never;
@@ -861,7 +865,10 @@ export interface paths {
         };
         put?: never;
         post?: never;
-        /** Delete project — admin only (#21) */
+        /**
+         * Delete project — admin only (#21)
+         * @description 409 PROJECT_HAS_DEPENDENTS if any live tag, department, source, or reimbursement (checked transitively via department) still references it.
+         */
         delete: {
             parameters: {
                 query?: never;
@@ -880,12 +887,16 @@ export interface paths {
                     };
                     content?: never;
                 };
+                404: components["responses"]["NotFound"];
                 409: components["responses"]["Conflict"];
             };
         };
         options?: never;
         head?: never;
-        /** Update project (#20) */
+        /**
+         * Update project (#20)
+         * @description total_income/total_expense are never client-writable — 400 if present in the body.
+         */
         patch: {
             parameters: {
                 query?: never;
@@ -904,6 +915,8 @@ export interface paths {
                     };
                     content?: never;
                 };
+                400: components["responses"]["ValidationError"];
+                404: components["responses"]["NotFound"];
             };
         };
         trace?: never;
@@ -984,7 +997,10 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Delete tag (#25) */
+        /**
+         * Delete tag (#25)
+         * @description 409 TAG_HAS_DEPENDENTS if any live source or reimbursement still references it.
+         */
         delete: {
             parameters: {
                 query?: never;
@@ -1003,12 +1019,16 @@ export interface paths {
                     };
                     content?: never;
                 };
+                404: components["responses"]["NotFound"];
                 409: components["responses"]["Conflict"];
             };
         };
         options?: never;
         head?: never;
-        /** Update tag (#24) */
+        /**
+         * Update tag (#24)
+         * @description 409 DUPLICATE_TAG on a rename colliding with another tag in the same project (application-level rule, no DB UNIQUE on name).
+         */
         patch: {
             parameters: {
                 query?: never;
@@ -1027,6 +1047,8 @@ export interface paths {
                     };
                     content?: never;
                 };
+                404: components["responses"]["NotFound"];
+                409: components["responses"]["Conflict"];
             };
         };
         trace?: never;
@@ -1106,7 +1128,10 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Delete department (#29) */
+        /**
+         * Delete department (#29)
+         * @description 409 DEPARTMENT_HAS_DEPENDENTS if it still has members (live staff_dept) or live reimbursements (checked transitively via staff_dept, so this still blocks even after every member has left).
+         */
         delete: {
             parameters: {
                 query?: never;
@@ -1125,12 +1150,16 @@ export interface paths {
                     };
                     content?: never;
                 };
+                404: components["responses"]["NotFound"];
                 409: components["responses"]["Conflict"];
             };
         };
         options?: never;
         head?: never;
-        /** Update department (#28) */
+        /**
+         * Update department (#28)
+         * @description 409 DUPLICATE_DEPARTMENT on a rename colliding with another department in the same project.
+         */
         patch: {
             parameters: {
                 query?: never;
@@ -1149,6 +1178,8 @@ export interface paths {
                     };
                     content?: never;
                 };
+                404: components["responses"]["NotFound"];
+                409: components["responses"]["Conflict"];
             };
         };
         trace?: never;
@@ -1219,7 +1250,10 @@ export interface paths {
             };
         };
         put?: never;
-        /** Create a funding source (#34) */
+        /**
+         * Create a funding source (#34)
+         * @description `reference_id` is required for type enroll/merch, and must be omitted for spon/other. `actual_amount` mirrors `expect_amount` immediately for spon/other (no approval step); stays 0 for enroll/merch until payments are approved. `tag_id`, if given, must belong to the same project — 400 otherwise.
+         */
         post: {
             parameters: {
                 query?: never;
@@ -1251,6 +1285,7 @@ export interface paths {
                     content?: never;
                 };
                 400: components["responses"]["ValidationError"];
+                404: components["responses"]["NotFound"];
             };
         };
         delete?: never;
@@ -1269,7 +1304,10 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Delete source (#36) */
+        /**
+         * Delete source (#36)
+         * @description 409 SOURCE_HAS_DEPENDENTS if any live payment still references it.
+         */
         delete: {
             parameters: {
                 query?: never;
@@ -1288,6 +1326,7 @@ export interface paths {
                     };
                     content?: never;
                 };
+                404: components["responses"]["NotFound"];
                 409: components["responses"]["Conflict"];
             };
         };
@@ -1312,6 +1351,8 @@ export interface paths {
                     };
                     content?: never;
                 };
+                400: components["responses"]["ValidationError"];
+                404: components["responses"]["NotFound"];
             };
         };
         trace?: never;
@@ -1374,7 +1415,7 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description Created (or 200 if already ingested — idempotent) */
+                /** @description Created (or 200 if already ingested — idempotent on _id) */
                 201: {
                     headers: {
                         [name: string]: unknown;
@@ -1382,7 +1423,20 @@ export interface paths {
                     content?: never;
                 };
                 401: components["responses"]["Unauthorized"];
-                404: components["responses"]["NotFound"];
+                /** @description SOURCE_NOT_FOUND — no source configured for this activity/store yet */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description DUPLICATE_QR_DATA — this promptpay_qr_data is already attached to a different payment */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
             };
         };
         delete?: never;
@@ -1458,14 +1512,14 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description Partial-success by design — each item is approved/rejected/skipped */
+                /** @description Partial-success by design — each item is approved/rejected/skipped independently, in its own transaction. amount_matches compares actual_amount to the payment's own expected_amount (accept-and-flag on a mismatch, not a hard reject — doc 03 §8 open question #9). Skip reasons: already decided by someone else, payment not found, or caller isn't finance for that payment's project (checked per item, not batch-wide). */
                 200: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content?: never;
                 };
-                /** @description REAUTH_REQUIRED */
+                /** @description REAUTH_REQUIRED — missing/expired X-Reauth-Token */
                 401: {
                     headers: {
                         [name: string]: unknown;
@@ -1540,7 +1594,7 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description Created */
+                /** @description Created. meta.budget is a real computed projection (sum of every non-rejected/ non-deleted reimbursement in the department vs. its allocated_budget) — warns, never blocks. Lands in 'head_approve' immediately, not 'waiting', if the requester themselves heads the target department (doc 04 §4 auto-verify). */
                 201: {
                     headers: {
                         [name: string]: unknown;
@@ -1548,6 +1602,21 @@ export interface paths {
                     content?: never;
                 };
                 400: components["responses"]["ValidationError"];
+                /** @description Not a member of department_id, or banking_id isn't a live account the caller owns */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                404: components["responses"]["NotFound"];
+                /** @description TAG_PROJECT_MISMATCH — tag_id doesn't belong to department_id's project */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
             };
         };
         delete?: never;
@@ -1565,7 +1634,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Bulk import from Google Form CSV — lands in 'waiting' immediately (#49) */
+        /**
+         * Bulk import from Google Form CSV — is_finance on project_id, lands in 'waiting' (#49)
+         * @description Fixed columns (not the doc's aspirational per-project-configurable mapping, which doesn't exist yet): requester_email, department, purpose, title, amount, and optional tag — one detail line per row. All-or-nothing: every row is resolved (requester by email, department/tag by name scoped to project_id) and validated before anything is written; any row failing returns the full per-row list in error.details and inserts nothing. Auto-verifies to head_approve per-row if that row's requester heads the resolved department (same rule as POST /reimbursements).
+         */
         post: {
             parameters: {
                 query?: never;
@@ -1576,19 +1648,33 @@ export interface paths {
             requestBody?: {
                 content: {
                     "multipart/form-data": {
+                        /**
+                         * Format: uuid
+                         * @description form field, not JSON — multer only extracts `file`
+                         */
+                        project_id: string;
                         /** Format: binary */
-                        file?: string;
+                        file: string;
                     };
                 };
             };
             responses: {
-                /** @description Per-row result */
+                /** @description { created, reimbursement_ids } */
                 201: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content?: never;
                 };
+                400: components["responses"]["ValidationError"];
+                /** @description Caller isn't finance for project_id */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                404: components["responses"]["NotFound"];
             };
         };
         delete?: never;
@@ -1750,8 +1836,15 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description OK */
+                /** @description OK — updated reimbursement + full history. The caller must hold the flag the transition demands (isHead/isFinance/isOwner/isRequester), checked for real via a direct StaffDept query, not the mock-permissive req.scope. fin_approve->transfer (owner only) explicitly rolls the total up to department/project/tag — no trigger does this yet (doc 02 §6 gap #1). */
                 200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Missing tracking_id (head_approve->fin_approve) or reason (any ->rejected) */
+                400: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -1764,6 +1857,14 @@ export interface paths {
                     };
                     content?: never;
                 };
+                /** @description Caller doesn't hold the required flag for this transition */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                404: components["responses"]["NotFound"];
                 /** @description INVALID_TRANSITION — see docs/backend/04-authorization.md §4 */
                 422: {
                     headers: {
@@ -1786,7 +1887,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Render ใบเบิกเงิน / ใบสำคัญจ่าย (#48) */
+        /**
+         * Render ใบเบิกเงิน / ใบสำคัญจ่าย (#48)
+         * @description Authorization (requester/head/finance/owner), NOT_APPROVED check, bank-account masking, Thai baht text, and verification QR are all real. Both type=request and type=voucher render real templates (real Puppeteer, both format=html and format=pdf) from real company documents — see templates/reimbursement-request.html and templates/reimbursement-voucher.html. Note: the voucher's หัก ณ ที่จ่าย (withholding tax) always shows 0 — nothing in this schema models a tax rate yet, so it's a real gap, not a computed (possibly wrong) value. Bank account number is masked (xxxxxx1234) unless the viewer is the requester, is_finance on the project, or owner/admin.
+         */
         get: {
             parameters: {
                 query: {
@@ -1811,6 +1915,15 @@ export interface paths {
                         "text/html": string;
                     };
                 };
+                /** @description type must be 'request' or 'voucher' */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
                 /** @description NOT_APPROVED — voucher requires fin_approve or transfer */
                 422: {
                     headers: {

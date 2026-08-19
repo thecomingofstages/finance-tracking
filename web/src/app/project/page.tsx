@@ -96,22 +96,29 @@ export default function ProjectsPage() {
   return (
     <AppShell>
       <div className="space-y-6">
-        {/* Page Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
-              รายการแผนงานทั้งหมด (Projects)
-            </h1>
-            <p className="text-sm text-slate-500 mt-1">
-              การจัดสรรงบประมาณ ติดตามค่าใช้จ่าย และสถานะการดำเนินงานของแต่ละโครงการ
-            </p>
+        {/* Page Header (ERP SaaS style) */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white p-5 sm:p-6 rounded-2xl border border-slate-200/80 shadow-xs">
+          <div className="flex items-center gap-3.5">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-900 border border-blue-100">
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+              </svg>
+            </div>
+            <div>
+              <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
+                แผนงานและงบประมาณ
+              </h1>
+              <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
+                การจัดสรรงบประมาณ ติดตามค่าใช้จ่าย และสถานะของแต่ละโครงการ
+              </p>
+            </div>
           </div>
 
           {canCreateProject && (
             <button
               type="button"
               onClick={() => setIsCreateModalOpen(true)}
-              className="bg-blue-900 hover:bg-blue-800 text-white rounded-xl px-4 py-2.5 shadow-sm shadow-blue-900/20 text-sm font-medium flex items-center gap-2 cursor-pointer self-start sm:self-auto transition-colors shrink-0"
+              className="bg-blue-900 hover:bg-blue-800 text-white rounded-xl px-4 py-2.5 shadow-sm shadow-blue-900/20 text-xs sm:text-sm font-semibold flex items-center gap-2 cursor-pointer self-start sm:self-auto transition-all active:scale-95 shrink-0"
             >
               <svg
                 className="w-4 h-4"
@@ -126,7 +133,7 @@ export default function ProjectsPage() {
                   d="M12 4v16m8-8H4"
                 />
               </svg>
-              <span>เพิ่ม Project</span>
+              <span>เพิ่มโครงการ</span>
             </button>
           )}
         </div>

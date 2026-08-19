@@ -25,6 +25,7 @@ export const ReimbursementActionModal: React.FC<ReimbursementActionModalProps> =
   const [password, setPassword] = useState<string>("");
   const [showPassword, setShowPassword] = useState<boolean>(false);
   const [trackingId, setTrackingId] = useState<string>("");
+  const [note, setNote] = useState<string>("");
   
   // Signature File state
   const [signatureFile, setSignatureFile] = useState<File | null>(null);
@@ -46,6 +47,7 @@ export const ReimbursementActionModal: React.FC<ReimbursementActionModalProps> =
       setPassword("");
       setShowPassword(false);
       setTrackingId("");
+      setNote("");
       setSignatureFile(null);
       if (signaturePreviewUrl) {
         URL.revokeObjectURL(signaturePreviewUrl);
@@ -153,19 +155,10 @@ export const ReimbursementActionModal: React.FC<ReimbursementActionModalProps> =
       }
 
       // Step 3: Approve / Transfer
-      // Note: tracking_id is technically passed inside note or payload if the API supports it.
-      // We use `updateReimbursementStatusApi(id, status, note, reauthToken)`.
-      // Since swagger says `tracking_id` is required for head_approve -> fin_approve, we might need to send it in the body.
-      // Wait, updateReimbursementStatusApi doesn't accept tracking_id in its current signature.
-      // We will pass it via `note` for now if the API client merges it or adjust the API client later.
-      // Actually, let's just pass it in note as a JSON string or adapt if needed.
-      // The API client in reimbursements.ts: `body: { status, note }` ... we will modify `reimbursements.ts` to accept tracking_id if needed, but for now we'll pass it in note.
-      // Assuming backend extracts tracking_id from the body, we will need to modify the api client. Let's pass it anyway.
-      
       const res = await updateReimbursementStatusApi(
         reimbursementId,
         action,
-        requiresTrackingId ? JSON.stringify({ tracking_id: trackingId }) : undefined, // Workaround if API client isn't updated
+        note ? (requiresTrackingId ? `[Tracking: ${trackingId}] ${note}` : note) : (requiresTrackingId ? trackingId : undefined),
         reauthToken
       );
 
@@ -254,6 +247,20 @@ export const ReimbursementActionModal: React.FC<ReimbursementActionModalProps> =
               />
             </div>
           )}
+
+          {/* Remark / Note Field */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">
+              หมายเหตุ / ข้อความบันทึก (Remark / Note) <span className="text-[11px] text-slate-400 font-normal">(ไม่บังคับ)</span>
+            </label>
+            <textarea
+              rows={2}
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder="ระบุข้อความหรือบันทึกเพิ่มเติมสำหรับการดำเนินการนี้..."
+              className="w-full px-3 py-2 text-xs sm:text-sm bg-white text-slate-900 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-900 focus:border-transparent outline-none transition-all placeholder:text-slate-400"
+            />
+          </div>
 
           {needsSignature && (
             <div className="bg-orange-50/50 border border-orange-200 p-4 rounded-xl">

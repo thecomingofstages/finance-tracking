@@ -51,9 +51,12 @@ export const ActiveProjectsWidget: React.FC<ActiveProjectsWidgetProps> = ({
         </h3>
         <Link
           href="/project"
-          className="text-xs font-medium text-slate-500 hover:text-blue-600 hover:underline transition-colors"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:text-blue-900 bg-slate-50 hover:bg-blue-50 border border-slate-200 hover:border-blue-200 rounded-xl shadow-2xs transition-all active:scale-95 shrink-0 cursor-pointer"
         >
-          ดูทั้งหมด →
+          <span>ดูทั้งหมด</span>
+          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
         </Link>
       </div>
 

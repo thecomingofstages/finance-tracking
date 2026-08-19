@@ -146,7 +146,7 @@ export default function NewReimbursementPage() {
     e.preventDefault();
 
     if (!departmentId) {
-      alert("กรุณาเลือกฝ่าย/แผนก");
+      alert("กรุณาเลือกฝ่าย");
       return;
     }
     if (!purpose.trim()) {

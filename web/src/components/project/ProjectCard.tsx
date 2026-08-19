@@ -50,33 +50,29 @@ export default function ProjectCard({ project }: ProjectCardProps) {
           {project.description || "ไม่มีคำอธิบายโครงการ"}
         </p>
 
-        {/* Budget Progress Bar */}
-        <div className="space-y-1.5 mb-4">
-          <div className="flex justify-between items-center text-xs text-slate-600">
-            <span className="font-medium">งบประมาณ</span>
-            <span className="font-mono font-medium text-slate-800">
-              ใช้ไป <strong className="text-slate-900">{formatTHB(actualExpense)}</strong> / {formatTHB(allocatedBudget)}
-            </span>
+        {/* Budget Progress Box */}
+        <div className="space-y-2 mb-4 bg-slate-50/80 p-3 rounded-xl border border-slate-100">
+          <div className="flex items-center justify-between gap-1 text-xs">
+            <span className="text-slate-500 font-medium">งบประมาณ</span>
+            <span className="font-semibold text-slate-900">{formatTHB(allocatedBudget)}</span>
           </div>
-          <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden p-0.5">
+          <div className="w-full bg-slate-200/80 rounded-full h-2 overflow-hidden">
             <div
               className={`h-full rounded-full transition-all duration-500 ${progressBarColor}`}
               style={{ width: `${Math.min(usageRatio, 100)}%` }}
             />
+          </div>
+          <div className="flex items-center justify-between text-[11px] text-slate-500">
+            <span>ใช้ไป <strong className="text-slate-800 font-semibold">{formatTHB(actualExpense)}</strong></span>
+            <span className={`font-bold ${usageRatio > 90 ? "text-rose-600" : "text-blue-900"}`}>{usagePercentage}%</span>
           </div>
         </div>
       </div>
 
       <div className="flex items-center justify-between pt-3 border-t border-slate-100 text-xs">
         <div className="flex items-center gap-1.5 text-slate-600">
-          <span className="font-medium text-slate-700">สัดส่วนการใช้:</span>
-          <span
-            className={`font-bold font-mono ${
-              usageRatio > 90 ? "text-rose-600" : "text-blue-900"
-            }`}
-          >
-            {usagePercentage}%
-          </span>
+          <span className="font-medium text-slate-500">คงเหลือ:</span>
+          <span className="font-bold text-slate-800">{formatTHB(Math.max(0, allocatedBudget - actualExpense))}</span>
         </div>
 
         <Link

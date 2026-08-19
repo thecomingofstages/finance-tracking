@@ -70,6 +70,31 @@ function LoginContent() {
           </div>
         </div>
 
+        {/* Not Provisioned Error Banner */}
+        {searchParams.get("error") === "not_provisioned" && (
+          <div className="p-3.5 rounded-xl text-xs bg-red-50 text-red-700 border border-red-200 flex items-start gap-2.5">
+            <svg
+              className="w-4 h-4 flex-shrink-0 mt-0.5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
+            </svg>
+            <div>
+              <div className="font-semibold">ไม่พบข้อมูลทีมงานในระบบ</div>
+              <div className="text-[11px] text-red-600 mt-0.5">
+                อีเมลนี้ยังไม่ได้ลงทะเบียนในฐานข้อมูล กรุณาติดต่อฝ่าย IT เพื่อเพิ่มชื่อเข้าสู่ระบบ
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Mode Title Indicator */}
         {activeTab === "claim" && (
           <div className="bg-zinc-50 border border-slate-200/80 rounded-xl p-3 text-center text-xs text-blue-900 font-medium">
@@ -98,7 +123,9 @@ function LoginContent() {
             <ClaimAccountForm
               initialToken={tokenParam}
               onBackToLogin={() => setActiveTab("login")}
-              onSuccess={() => setActiveTab("login")}
+              onSuccess={() => {
+                refreshUser();
+              }}
             />
           )}
 
@@ -108,11 +135,6 @@ function LoginContent() {
               onSuccess={() => setActiveTab("login")}
             />
           )}
-        </div>
-
-        {/* Footer Brand Note */}
-        <div className="pt-2 text-center text-[11px] text-slate-400 border-t border-slate-100">
-          The Coming of Stages • Internal Financial Portal
         </div>
       </div>
 

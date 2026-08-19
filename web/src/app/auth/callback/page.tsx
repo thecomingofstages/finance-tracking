@@ -59,6 +59,11 @@ export default function AuthCallbackPage() {
         return;
       }
 
+      if (result.code === "NOT_PROVISIONED") {
+        router.replace("/login?error=not_provisioned");
+        return;
+      }
+
       setError(result.error ?? "เข้าสู่ระบบด้วย Google ไม่สำเร็จ กรุณาติดต่อฝ่าย IT");
     })();
   }, [loginWithSupabase, router]);
