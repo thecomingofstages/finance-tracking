@@ -3,6 +3,8 @@
 import React, { useEffect, useState } from "react";
 import { claimApi } from "@/lib/api/auth";
 import { clearPendingToken, peekPendingToken } from "@/lib/auth/supabaseOAuth";
+import { setAccessToken } from "@/lib/api/client";
+import { useAuth } from "@/context/AuthContext";
 
 export interface ClaimAccountFormProps {
   initialToken?: string;
@@ -15,6 +17,7 @@ export const ClaimAccountForm: React.FC<ClaimAccountFormProps> = ({
   onSuccess,
   onBackToLogin,
 }) => {
+  const { refreshUser } = useAuth();
   const [sessionToken, setSessionToken] = useState(initialToken);
   /** True when the Supabase token came from a link or the Google redirect rather than a paste,
    *  which is the only case where we hide the manual token field. */
@@ -64,7 +67,7 @@ export const ClaimAccountForm: React.FC<ClaimAccountFormProps> = ({
     setIsLoading(true);
 
     try {
-      const { response, error: apiError } = await claimApi(password, sessionToken.trim());
+      const { data, response, error: apiError } = await claimApi(password, sessionToken.trim());
 
       if (response.status === 404) {
         setError("ไม่พบข้อมูลทีมงาน กรุณาติดต่อฝ่าย IT");
@@ -86,9 +89,16 @@ export const ClaimAccountForm: React.FC<ClaimAccountFormProps> = ({
         return;
       }
 
+      const resData = (data as any)?.data || (data as any);
+      const accessToken = resData?.access_token;
+      if (accessToken) {
+        setAccessToken(accessToken);
+      }
+
       // Consumed — don't leave a live Supabase token in sessionStorage for the rest of the tab.
       clearPendingToken();
-      setSuccessMessage("ตั้งรหัสผ่านเรียบร้อยแล้ว กรุณาเข้าสู่ระบบด้วยรหัสผ่านใหม่");
+      setSuccessMessage("ตั้งรหัสผ่านเรียบร้อยแล้ว กำลังเข้าสู่ระบบ...");
+      await refreshUser();
       onSuccess?.();
     } catch {
       setError("เกิดข้อผิดพลาดในการเชื่อมต่อระบบ กรุณาติดต่อฝ่าย IT");

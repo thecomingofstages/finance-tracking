@@ -65,7 +65,7 @@ export default function DepartmentBudgetWidget({
             </div>
             <div>
               <h3 className="font-semibold text-slate-900 text-base">
-                สัดส่วนตามฝ่าย / แผนก
+                สัดส่วนตามฝ่าย (Department Budget)
               </h3>
               <p className="text-xs text-slate-500">
                 การจัดสรรและการเบิกจ่ายงบประมาณจำแนกตามหน่วยงาน
@@ -73,13 +73,13 @@ export default function DepartmentBudgetWidget({
             </div>
           </div>
           <span className="text-xs text-slate-500 font-medium">
-            {departments.length} แผนก
+            {departments.length} ฝ่าย
           </span>
         </div>
 
         {departments.length === 0 ? (
           <div className="py-8 text-center text-slate-500 text-sm">
-            ไม่มีข้อมูลการจัดสรรงบประมาณตามแผนก
+            ไม่มีข้อมูลการจัดสรรงบประมาณตามฝ่าย
           </div>
         ) : (
           <div className="space-y-4">

@@ -4,7 +4,7 @@ import React, { useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { Navbar } from "./Navbar";
-import { Sidebar } from "./Sidebar";
+import { Sidebar, BottomNav } from "./Sidebar";
 import { SignatureUploadModal } from "@/components/auth";
 import { PrintReportModal } from "@/components/reports";
 
@@ -30,7 +30,11 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
   }, [isLoading, user, isAuthPage, router]);
 
   useEffect(() => {
-    if (!isLoading && user && !user.signature_image && !isAuthPage) {
+    const isDismissed =
+      typeof window !== "undefined" &&
+      sessionStorage.getItem("signature_modal_dismissed") === "true";
+
+    if (!isLoading && user && !user.signature_image && !isAuthPage && !isDismissed) {
       setSignatureModalOpen(true);
     } else {
       setSignatureModalOpen(false);
@@ -69,17 +73,27 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
           onClose={() => setMobileSidebarOpen(false)}
         />
 
-        <main className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8">
+        <main className="flex-1 overflow-y-auto p-3.5 sm:p-5 md:p-6 lg:p-8 pb-24 md:pb-8">
           <div className="mx-auto max-w-7xl">
             {children}
           </div>
         </main>
       </div>
 
+      <BottomNav />
+
       <SignatureUploadModal
         isOpen={signatureModalOpen}
-        onClose={() => setSignatureModalOpen(false)}
+        onClose={() => {
+          if (typeof window !== "undefined") {
+            sessionStorage.setItem("signature_modal_dismissed", "true");
+          }
+          setSignatureModalOpen(false);
+        }}
         onSuccess={async () => {
+          if (typeof window !== "undefined") {
+            sessionStorage.removeItem("signature_modal_dismissed");
+          }
           setSignatureModalOpen(false);
           await refreshUser();
         }}

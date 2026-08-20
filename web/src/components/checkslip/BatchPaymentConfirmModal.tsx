@@ -7,7 +7,14 @@ import { verifyPasswordApi, uploadSignatureApi } from "@/lib/api/auth";
 
 export interface BatchPaymentConfirmModalProps {
   isOpen: boolean;
-  decisions: { payment_id: string; status: "approved" | "rejected"; actual_amount?: number }[];
+  decisions: {
+    payment_id: string;
+    status: "approved" | "rejected";
+    actual_amount?: number;
+    tracking_id?: string;
+    title?: string;
+    payer?: string;
+  }[];
   onClose: () => void;
   onSuccess?: () => void;
 }
@@ -22,6 +29,7 @@ export const BatchPaymentConfirmModal: React.FC<BatchPaymentConfirmModalProps> =
 
   const [password, setPassword] = useState<string>("");
   const [showPassword, setShowPassword] = useState<boolean>(false);
+  const [remark, setRemark] = useState<string>("");
   
   // Signature File state
   const [signatureFile, setSignatureFile] = useState<File | null>(null);
@@ -45,6 +53,7 @@ export const BatchPaymentConfirmModal: React.FC<BatchPaymentConfirmModalProps> =
     if (!isOpen) {
       setPassword("");
       setShowPassword(false);
+      setRemark("");
       setSignatureFile(null);
       if (signaturePreviewUrl) {
         URL.revokeObjectURL(signaturePreviewUrl);
@@ -223,6 +232,49 @@ export const BatchPaymentConfirmModal: React.FC<BatchPaymentConfirmModalProps> =
                 <div className="text-2xl font-bold text-rose-600">{rejectedCount}</div>
                 <div className="text-xs font-medium text-slate-500 mt-0.5">ปฏิเสธ</div>
              </div>
+          </div>
+
+          {/* List of items with Tracking IDs */}
+          <div className="space-y-1.5">
+            <label className="block text-xs font-semibold text-slate-700">
+              รายการที่กำลังดำเนินการ ({totalDecisions} รายการ)
+            </label>
+            <div className="max-h-36 overflow-y-auto space-y-1.5 p-2.5 bg-slate-50 border border-slate-200 rounded-xl divide-y divide-slate-200/60 text-xs">
+              {decisions.map((d, idx) => (
+                <div key={d.payment_id || idx} className="pt-1.5 first:pt-0 flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5 font-mono font-semibold text-blue-900">
+                      <span>{d.tracking_id || `PAY-${String(d.payment_id).substring(0, 8).toUpperCase()}`}</span>
+                    </div>
+                    {d.title && <p className="truncate text-[11px] text-slate-500">{d.title}</p>}
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {d.actual_amount != null && (
+                      <span className="font-medium text-slate-700">฿{d.actual_amount.toLocaleString("th-TH")}</span>
+                    )}
+                    <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
+                      d.status === "approved" ? "bg-emerald-100 text-emerald-800" : "bg-rose-100 text-rose-800"
+                    }`}>
+                      {d.status === "approved" ? "อนุมัติ" : "ปฏิเสธ"}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Remark / Note Field */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">
+              หมายเหตุเพิ่มเติม (Remark / Note) <span className="text-[11px] text-slate-400 font-normal">(ไม่บังคับ)</span>
+            </label>
+            <textarea
+              rows={2}
+              value={remark}
+              onChange={(e) => setRemark(e.target.value)}
+              placeholder="ระบุเหตุผลหรือบันทึกเพิ่มเติมสำหรับการตรวจสอบ..."
+              className="w-full px-3 py-2 text-xs sm:text-sm bg-white text-slate-900 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-900 focus:border-transparent outline-none transition-all placeholder:text-slate-400"
+            />
           </div>
 
           {/* Conditional Signature Upload */}

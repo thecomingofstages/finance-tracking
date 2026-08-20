@@ -2,6 +2,7 @@
 
 import React, { useState, useRef } from "react";
 import { verifyPasswordApi, uploadSignatureApi } from "@/lib/api/auth";
+import { useAuth } from "@/context/AuthContext";
 
 export interface SignatureUploadModalProps {
   isOpen: boolean;
@@ -14,6 +15,7 @@ export const SignatureUploadModal: React.FC<SignatureUploadModalProps> = ({
   onClose,
   onSuccess,
 }) => {
+  const { user, refreshUser } = useAuth();
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [password, setPassword] = useState("");
@@ -48,6 +50,13 @@ export const SignatureUploadModal: React.FC<SignatureUploadModalProps> = ({
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
+  };
+
+  const handleDismiss = () => {
+    if (typeof window !== "undefined") {
+      sessionStorage.setItem("signature_modal_dismissed", "true");
+    }
+    onClose();
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -89,6 +98,15 @@ export const SignatureUploadModal: React.FC<SignatureUploadModalProps> = ({
         return;
       }
 
+      const resData = (uploadRes.data as any)?.data || (uploadRes.data as any);
+      const signatureUrl = resData?.signature_image || previewUrl;
+
+      if (typeof window !== "undefined" && user?._id && signatureUrl) {
+        localStorage.setItem(`sig_${user._id}`, signatureUrl);
+        sessionStorage.removeItem("signature_modal_dismissed");
+      }
+
+      await refreshUser();
       onSuccess?.();
       onClose();
     } catch {
@@ -108,8 +126,8 @@ export const SignatureUploadModal: React.FC<SignatureUploadModalProps> = ({
           </h3>
           <button
             type="button"
-            onClick={onClose}
-            className="text-slate-400 hover:text-slate-600 p-1 rounded-lg focus:outline-none"
+            onClick={handleDismiss}
+            className="text-slate-400 hover:text-slate-600 p-1 rounded-lg focus:outline-none cursor-pointer"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path
@@ -223,9 +241,9 @@ export const SignatureUploadModal: React.FC<SignatureUploadModalProps> = ({
           <div className="pt-3 flex items-center justify-end gap-3 border-t border-slate-100">
             <button
               type="button"
-              onClick={onClose}
+              onClick={handleDismiss}
               disabled={isLoading}
-              className="px-3.5 py-2 text-xs font-medium text-slate-500 hover:text-slate-800 transition-colors disabled:opacity-50"
+              className="px-3.5 py-2 text-xs font-medium text-slate-500 hover:text-slate-800 transition-colors disabled:opacity-50 cursor-pointer"
             >
               ไว้ทีหลัง
             </button>

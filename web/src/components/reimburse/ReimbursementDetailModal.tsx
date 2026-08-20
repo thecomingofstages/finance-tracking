@@ -1,8 +1,10 @@
 "use client";
 
 import React, { useState, useMemo } from "react";
+import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
 import StatusBadge from "./StatusBadge";
+import { ReceiptViewer } from "./ReceiptViewer";
 import { updateReimbursementStatusApi } from "@/lib/api/reimbursements";
 import { verifyPasswordApi } from "@/lib/api/auth";
 import { formatCurrencyTH } from "@/lib/format";
@@ -28,6 +30,7 @@ export const ReimbursementDetailModal: React.FC<ReimbursementDetailModalProps> =
   const [note, setNote] = useState<string>("");
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [copiedTrackingId, setCopiedTrackingId] = useState<boolean>(false);
 
   // Check privileged role permissions
   const isPrivilegedRole = useMemo(() => {
@@ -62,7 +65,7 @@ export const ReimbursementDetailModal: React.FC<ReimbursementDetailModalProps> =
   const projectName =
     item.project_name || item.project?.name || item.project_code || "โครงการทั่วไป";
   const departmentName =
-    item.department_name || item.department?.name || item.staff_dept_name || "ไม่ระบุแผนก";
+    item.department_name || item.department?.name || item.staff_dept_name || "ไม่ระบุฝ่าย";
   
   const requesterName =
     item.requester_name ||
@@ -215,24 +218,35 @@ export const ReimbursementDetailModal: React.FC<ReimbursementDetailModalProps> =
     return false;
   })();
 
+  const fullTrackingId = String(item.tracking_id || item._id || item.id || "");
+
+  const handleCopyId = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (typeof navigator !== "undefined" && navigator.clipboard) {
+      navigator.clipboard.writeText(fullTrackingId);
+      setCopiedTrackingId(true);
+      setTimeout(() => setCopiedTrackingId(false), 2000);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm transition-opacity animate-in fade-in duration-200">
       <div
         className="bg-white rounded-2xl shadow-2xl border border-slate-100 w-full max-w-2xl overflow-hidden transition-all transform scale-100 max-h-[90vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/50">
-          <div className="flex items-center space-x-3">
-            <span className="font-mono text-xs font-semibold px-2.5 py-1 bg-slate-100 text-slate-700 rounded-lg border border-slate-200">
-              {trackingId}
-            </span>
+        {/* Modal Top Header Bar */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-white">
+          <div className="flex items-center gap-2">
+            <h3 className="text-base font-bold text-slate-900">
+              รายละเอียดคำขอเบิกเงิน
+            </h3>
             <StatusBadge status={status} />
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 transition-colors"
+            className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -240,219 +254,271 @@ export const ReimbursementDetailModal: React.FC<ReimbursementDetailModalProps> =
           </button>
         </div>
 
+        {/* Dedicated Full UUID7 Tracking ID Bar */}
+        <div className="flex flex-wrap items-center justify-between gap-2 px-6 py-2.5 bg-blue-50/60 border-b border-blue-100/60 text-xs">
+          <div className="flex items-center gap-2 min-w-0 flex-1">
+            <span className="text-slate-500 font-medium whitespace-nowrap">รหัสติดตาม (UUID7):</span>
+            <span className="font-mono text-xs font-bold text-blue-900 bg-white px-2.5 py-1 rounded-md border border-blue-200/80 shadow-2xs break-all select-all">
+              {fullTrackingId || trackingId}
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={handleCopyId}
+            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-blue-900 bg-white hover:bg-blue-50 border border-blue-200 rounded-lg shadow-2xs transition-all active:scale-95 shrink-0 cursor-pointer"
+            title="คัดลอกรหัสติดตามฉบับเต็ม"
+          >
+            {copiedTrackingId ? (
+              <span className="text-emerald-600 font-bold">✓ คัดลอกแล้ว</span>
+            ) : (
+              <>
+                <svg className="w-3.5 h-3.5 text-blue-900" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                </svg>
+                <span>คัดลอกรหัส</span>
+              </>
+            )}
+          </button>
+        </div>
+
         {/* Content Body */}
         <div className="p-6 overflow-y-auto space-y-6 flex-1">
-          {/* Title & Amount */}
-          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 pb-4 border-b border-slate-100">
-            <div>
-              <p className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-1">
+          {/* Title & Amount Card */}
+          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 p-4 bg-slate-50/70 rounded-2xl border border-slate-100">
+            <div className="min-w-0 flex-1">
+              <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">
                 หัวข้อรายการเบิกเงิน
               </p>
-              <h2 className="text-xl font-bold text-slate-800">{title}</h2>
+              <h2 className="text-base sm:text-lg font-bold text-slate-900 leading-snug break-words">
+                {title}
+              </h2>
               {item.note && (
-                <p className="text-sm text-slate-600 mt-1 bg-slate-50 p-2.5 rounded-lg border border-slate-100">
-                  {item.note}
+                <p className="text-xs text-slate-600 mt-2 bg-white p-2.5 rounded-xl border border-slate-100">
+                  <span className="font-semibold text-slate-700">หมายเหตุ:</span> {item.note}
                 </p>
               )}
             </div>
-            <div className="text-left sm:text-right shrink-0">
-              <p className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-1">
+            <div className="text-left sm:text-right shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-200/60">
+              <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">
                 ยอดเงินรวม
               </p>
-              <span className="text-2xl font-extrabold text-blue-900">{formattedAmount}</span>
+              <span className="text-xl sm:text-2xl font-extrabold text-blue-900 block">
+                {formattedAmount}
+              </span>
             </div>
           </div>
 
-          {/* Metadata Grid */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 p-4 bg-slate-50/70 rounded-xl border border-slate-100">
-            <div>
-              <span className="text-[11px] font-medium text-slate-400 uppercase tracking-wider block">
-                โครงการ (Project)
-              </span>
-              <span className="text-xs font-semibold text-slate-700 mt-0.5 block truncate">
-                {projectName}
-              </span>
+          {/* Metadata Grid (2 Columns, Never Truncated) */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-4 bg-slate-50/50 rounded-2xl border border-slate-100">
+            <div className="flex items-start justify-between sm:justify-start sm:gap-3 p-2.5 bg-white rounded-xl border border-slate-100">
+              <span className="text-xs font-medium text-slate-400 shrink-0">โครงการ:</span>
+              <span className="text-xs font-semibold text-slate-800 text-right sm:text-left break-words">{projectName}</span>
             </div>
-            <div>
-              <span className="text-[11px] font-medium text-slate-400 uppercase tracking-wider block">
-                แผนก (Department)
-              </span>
-              <span className="text-xs font-semibold text-slate-700 mt-0.5 block truncate">
-                {departmentName}
-              </span>
+            <div className="flex items-start justify-between sm:justify-start sm:gap-3 p-2.5 bg-white rounded-xl border border-slate-100">
+              <span className="text-xs font-medium text-slate-400 shrink-0">ฝ่าย:</span>
+              <span className="text-xs font-semibold text-slate-800 text-right sm:text-left break-words">{departmentName}</span>
             </div>
-            <div>
-              <span className="text-[11px] font-medium text-slate-400 uppercase tracking-wider block">
-                ผู้ยื่นคำขอ (Requester)
-              </span>
-              <span className="text-xs font-semibold text-slate-700 mt-0.5 block truncate">
-                {requesterName}
-              </span>
+            <div className="flex items-start justify-between sm:justify-start sm:gap-3 p-2.5 bg-white rounded-xl border border-slate-100">
+              <span className="text-xs font-medium text-slate-400 shrink-0">ผู้ยื่นคำขอ:</span>
+              <span className="text-xs font-semibold text-slate-800 text-right sm:text-left break-words">{requesterName}</span>
             </div>
-            <div>
-              <span className="text-[11px] font-medium text-slate-400 uppercase tracking-wider block">
-                วันที่ยื่น (Date)
-              </span>
-              <span className="text-xs font-semibold text-slate-700 mt-0.5 block truncate">
-                {formattedDate}
-              </span>
+            <div className="flex items-start justify-between sm:justify-start sm:gap-3 p-2.5 bg-white rounded-xl border border-slate-100">
+              <span className="text-xs font-medium text-slate-400 shrink-0">วันที่ยื่น:</span>
+              <span className="text-xs font-semibold text-slate-800 text-right sm:text-left break-words">{formattedDate}</span>
+            </div>
+          </div>
+
+          {/* ตารางรายการเบิกเงิน (Itemized Table Matching Image 2) */}
+          <div className="space-y-2">
+            <h3 className="text-xs font-semibold text-slate-700 uppercase tracking-wider">
+              รายการเบิกเงิน (ตารางตามแบบฟอร์มใบเบิกเงิน)
+            </h3>
+            
+            <div className="overflow-hidden border border-slate-300 rounded-xl bg-white shadow-2xs">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr className="bg-slate-100 border-b border-slate-300 font-bold text-slate-700 text-center">
+                    <th className="py-2 px-3 w-14 border-r border-slate-300">ลำดับ</th>
+                    <th className="py-2 px-3 text-left border-r border-slate-300">รายการ</th>
+                    <th className="py-2 px-3 text-right w-32">จำนวนเงิน (บาท)</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200 text-slate-800 font-medium">
+                  {(Array.isArray(item.details) && item.details.length > 0
+                    ? item.details
+                    : [{ title: title, amount: amount }]
+                  ).map((d: any, idx: number) => (
+                    <tr key={idx} className="hover:bg-slate-50/70 transition-colors">
+                      <td className="py-2 px-3 text-center border-r border-slate-200 text-slate-500 font-mono">
+                        {idx + 1}
+                      </td>
+                      <td className="py-2 px-3 border-r border-slate-200">
+                        {d.title}
+                      </td>
+                      <td className="py-2 px-3 text-right font-mono font-semibold text-slate-900">
+                        {formatCurrencyTH(d.amount, 2)}
+                      </td>
+                    </tr>
+                  ))}
+                  {/* Summary Row */}
+                  <tr className="bg-slate-50 font-bold border-t-2 border-slate-300">
+                    <td colSpan={2} className="py-2.5 px-3 text-center border-r border-slate-300 text-blue-900">
+                      รวมทั้งสิ้น
+                    </td>
+                    <td className="py-2.5 px-3 text-right font-mono text-blue-900 font-bold">
+                      {formattedAmount}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
           </div>
 
           {/* Receipt Document Section */}
           <div className="space-y-2">
             <h3 className="text-xs font-semibold text-slate-700 uppercase tracking-wider">
-              เอกสารหลักฐาน / ใบเสร็จรับเงิน
+              เอกสารหลักฐาน / ใบกำกับภาษี
             </h3>
-            {receiptUrl ? (
-              <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
-                {isImageReceipt ? (
-                  <div className="relative rounded-lg overflow-hidden border border-slate-200 max-h-56 flex items-center justify-center bg-slate-900/5">
-                    <img
-                      src={receiptUrl}
-                      alt="Receipt preview"
-                      className="max-h-56 object-contain"
-                    />
-                  </div>
-                ) : (
-                  <div className="flex items-center space-x-3">
-                    <div className="w-10 h-10 rounded-lg bg-blue-50 text-slate-800 flex items-center justify-center font-bold text-xs">
-                      DOC
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs font-medium text-slate-800 truncate">
-                        หลักฐานการเบิกเงิน
-                      </p>
-                      <p className="text-[11px] text-slate-400">คลิกเพื่อดูเอกสารแนบฉบับเต็ม</p>
-                    </div>
-                  </div>
-                )}
-                <div className="flex justify-end">
-                  <a
-                    href={receiptUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center space-x-1.5 px-3 py-1.5 text-xs font-medium text-blue-900 bg-zinc-50 border border-slate-200 rounded-lg hover:bg-blue-50 transition-colors"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
-                      />
-                    </svg>
-                    <span>ดูเอกสารฉบับเต็ม</span>
-                  </a>
-                </div>
-              </div>
-            ) : (
-              <div className="p-4 border border-dashed border-slate-200 rounded-xl text-center bg-slate-50/50 text-xs text-slate-400">
-                ไม่มีเอกสารหลักฐานแนบในรายการนี้
-              </div>
-            )}
+            <ReceiptViewer url={receiptUrl} />
           </div>
 
-          {/* Status Progress Timeline */}
+          {/* Status Progress Vertical 3-Stage Timeline */}
           <div className="space-y-3">
-            <h3 className="text-xs font-semibold text-slate-700 uppercase tracking-wider">
-              สถานะการดำเนินงาน (Timeline)
-            </h3>
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                สถานะการดำเนินงาน (Timeline)
+              </h3>
+            </div>
+            
             <div className="p-4 bg-slate-50/70 border border-slate-200 rounded-xl">
-              {isRejected ? (
-                <div className="flex items-center space-x-3 text-slate-800 bg-rose-50 border border-slate-200 p-3 rounded-lg text-xs font-medium">
-                  <svg className="w-5 h-5 shrink-0 fill-current" viewBox="0 0 20 20">
-                    <path d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" />
-                  </svg>
-                  <span>คำขอนี้ถูกปฏิเสธแล้ว</span>
-                </div>
-              ) : (
-                <div className="relative flex items-center justify-between">
-                  {/* Background progress bar */}
-                  <div className="absolute top-1/2 left-4 right-4 h-0.5 bg-slate-200 -translate-y-1/2 z-0" />
+              <div className="relative pl-6 space-y-5 before:absolute before:left-[11px] before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-200">
+                
+                {/* Step 3: APPROVED / TRANSFERRED */}
+                <div className="relative">
                   <div
-                    className="absolute top-1/2 left-4 h-0.5 bg-blue-900 -translate-y-1/2 z-0 transition-all duration-300"
-                    style={{
-                      width: `${(currentStepIndex / (steps.length - 1)) * 100}%`,
-                    }}
-                  />
-
-                  {steps.map((step, idx) => {
-                    const isCompleted = idx <= currentStepIndex;
-                    const isCurrent = idx === currentStepIndex;
-
-                    return (
-                      <div
-                        key={step.key}
-                        className="relative z-10 flex flex-col items-center group"
-                      >
-                        <div
-                          className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all ${
-                            isCompleted
-                              ? "bg-blue-900 text-white ring-4 ring-emerald-50"
-                              : isCurrent
-                              ? "bg-blue-900 text-white ring-4 ring-blue-100"
-                              : "bg-white text-slate-400 border border-slate-300"
-                          }`}
-                        >
-                          {isCompleted && idx < currentStepIndex ? (
-                            <svg className="w-4 h-4 stroke-current" fill="none" viewBox="0 0 24 24">
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={3}
-                                d="M5 13l4 4L19 7"
-                              />
-                            </svg>
-                          ) : (
-                            idx + 1
-                          )}
-                        </div>
-                        <span
-                          className={`text-[11px] font-medium mt-1.5 text-center ${
-                            isCurrent
-                              ? "text-blue-900 font-bold"
-                              : isCompleted
-                              ? "text-slate-700"
-                              : "text-slate-400"
-                          }`}
-                        >
-                          {step.label}
-                        </span>
-                      </div>
-                    );
-                  })}
+                    className={`absolute -left-[29px] top-0.5 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ring-4 ring-white ${
+                      ["transfer", "completed"].includes(status)
+                        ? "bg-emerald-600 text-white"
+                        : "bg-slate-200 text-slate-500"
+                    }`}
+                  >
+                    {["transfer", "completed"].includes(status) ? "✓" : "3"}
+                  </div>
+                  <div className="space-y-0.5">
+                    <span className="inline-block px-2 py-0.5 text-[10px] font-mono font-bold bg-slate-100 text-slate-700 rounded border border-slate-200">
+                      APPROVED / TRANSFERRED
+                    </span>
+                    <p className="text-xs font-semibold text-slate-900">
+                      {["transfer", "completed"].includes(status)
+                        ? "อนุมัติการโอนเงินและจ่ายเงินเรียบร้อยแล้ว"
+                        : "ยืนยันการอนุมัติเบิกเงินและโอนเงิน"}
+                    </p>
+                    <p className="text-[11px] text-slate-400">
+                      {["transfer", "completed"].includes(status) ? "โอนเงินเรียบร้อย" : "รอการโอนเงินเข้าบัญชี"}
+                    </p>
+                  </div>
                 </div>
-              )}
+
+                {/* Step 2: UNDER REVIEW / EDITED */}
+                <div className="relative">
+                  <div
+                    className={`absolute -left-[29px] top-0.5 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ring-4 ring-white ${
+                      ["head_approve", "fin_approve", "transfer", "completed"].includes(status)
+                        ? "bg-blue-900 text-white"
+                        : status === "rejected"
+                        ? "bg-rose-500 text-white"
+                        : "bg-blue-100 text-blue-900"
+                    }`}
+                  >
+                    {["head_approve", "fin_approve", "transfer", "completed"].includes(status) ? "✓" : "2"}
+                  </div>
+                  <div className="space-y-0.5">
+                    <span className="inline-block px-2 py-0.5 text-[10px] font-mono font-bold bg-slate-100 text-slate-700 rounded border border-slate-200">
+                      {status === "rejected" ? "EDITED / REJECTED" : "UNDER_REVIEW"}
+                    </span>
+                    <p className="text-xs font-semibold text-slate-900">
+                      {status === "head_approve"
+                        ? "ฝ่ายการเงินกำลังตรวจสอบเอกสาร"
+                        : status === "rejected"
+                        ? "ส่งกลับให้ผู้ยื่นแก้ไขเอกสาร"
+                        : "หัวหน้าฝ่ายกำลังตรวจสอบคำขอ"}
+                    </p>
+                    <p className="text-[11px] text-slate-400">
+                      กำลังดำเนินการ
+                    </p>
+                  </div>
+                </div>
+
+                {/* Step 1: CREATED */}
+                <div className="relative">
+                  <div className="absolute -left-[29px] top-0.5 w-6 h-6 rounded-full bg-blue-900 text-white flex items-center justify-center text-xs font-bold ring-4 ring-white">
+                    ✓
+                  </div>
+                  <div className="space-y-0.5">
+                    <span className="inline-block px-2 py-0.5 text-[10px] font-mono font-bold bg-slate-100 text-slate-700 rounded border border-slate-200">
+                      CREATED
+                    </span>
+                    <p className="text-xs font-semibold text-slate-900">
+                      &lt;{requesterName}&gt; {departmentName} ยื่นคำขอเบิกเงิน
+                    </p>
+                    <p className="text-[11px] text-slate-400">
+                      เมื่อ {formattedDate}
+                    </p>
+                  </div>
+                </div>
+
+              </div>
             </div>
           </div>
         </div>
 
         {/* Footer / Action Bar for Privileged Roles */}
-        {canPerformAction && (
-          <div className="px-6 py-4 border-t border-slate-100 bg-slate-50/70 flex items-center justify-end space-x-3">
-            <button
-              type="button"
-              onClick={() => handleOpenActionDialog("reject")}
-              className="px-4 py-2.5 text-xs font-medium text-slate-800 bg-rose-50 border border-slate-200 rounded-xl hover:bg-blue-50 transition-colors flex items-center space-x-1.5"
+        <div className="px-6 py-4 border-t border-slate-100 bg-slate-50/70 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <Link
+              href={`/reimburse/${rawId}`}
+              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-blue-900 bg-white hover:bg-blue-50 border border-slate-200 rounded-xl transition-colors shadow-2xs"
             >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
               </svg>
-              <span>ปฏิเสธคำขอ</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => handleOpenActionDialog("approve")}
-              className="px-5 py-2.5 text-xs font-medium text-white bg-blue-900 hover:bg-blue-800 rounded-xl transition-colors shadow-sm flex items-center space-x-1.5"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-              </svg>
-              <span>อนุมัติคำขอ</span>
-            </button>
+              <span>เปิดดูหน้าเต็ม</span>
+            </Link>
           </div>
-        )}
+
+          {canPerformAction ? (
+            <div className="flex items-center space-x-2">
+              <button
+                type="button"
+                onClick={() => handleOpenActionDialog("reject")}
+                className="px-4 py-2 text-xs font-medium text-rose-700 bg-rose-50 border border-rose-200 rounded-xl hover:bg-rose-100 transition-colors flex items-center space-x-1.5 cursor-pointer"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+                <span>ปฏิเสธคำขอ</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleOpenActionDialog("approve")}
+                className="px-4 py-2 text-xs font-medium text-white bg-blue-900 hover:bg-blue-800 rounded-xl transition-colors shadow-sm flex items-center space-x-1.5 cursor-pointer"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+                <span>อนุมัติคำขอ</span>
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 text-xs font-semibold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl transition-colors cursor-pointer"
+            >
+              ปิดหน้าต่าง
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Step-Up Password Confirmation Dialog */}

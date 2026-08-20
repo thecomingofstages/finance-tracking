@@ -93,8 +93,7 @@ export default function CheckslipPage() {
         list = FALLBACK_PAYMENTS;
       }
       setPayments(list);
-    } catch (err) {
-      console.error("Failed to fetch payments:", err);
+    } catch {
       setPayments(FALLBACK_PAYMENTS);
     } finally {
       setIsFetching(false);
@@ -135,11 +134,18 @@ export default function CheckslipPage() {
     });
   };
 
-  // Convert dictionary to array for submission
-  const decisionArray = Object.keys(decisions).map((id) => ({
-    payment_id: id,
-    ...decisions[id],
-  }));
+  // Convert dictionary to array for submission with tracking_id and title
+  const decisionArray = useMemo(() => {
+    return Object.keys(decisions).map((id) => {
+      const payment = payments.find((p) => (p.payment_id || p.id || p._id) === id);
+      return {
+        payment_id: id,
+        tracking_id: payment?.tracking_id,
+        title: payment?.title,
+        ...decisions[id],
+      };
+    });
+  }, [decisions, payments]);
 
   if (isLoading || !canAccess) {
     return null;
@@ -148,14 +154,21 @@ export default function CheckslipPage() {
   return (
     <AppShell>
       <div className="space-y-6 pb-24 relative">
-        {/* Page Header */}
-        <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm">
-          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
-            ระบบตรวจสลิป (Check Slip)
-          </h1>
-          <p className="text-sm text-slate-500 mt-1">
-            ตรวจสอบสลิปการโอนเงินและอนุมัติยอดรับเงินแบบกลุ่ม
-          </p>
+        {/* Page Header (ERP SaaS style) */}
+        <div className="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200/80 shadow-xs flex items-center gap-3.5">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-900 border border-blue-100">
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+          <div>
+            <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
+              ตรวจสลิปและโอนเงิน
+            </h1>
+            <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
+              ตรวจสอบสลิปการโอนเงิน ยืนยันยอดเงิน และอนุมัติรายการแบบกลุ่ม
+            </p>
+          </div>
         </div>
 
         {/* Status Tabs */}

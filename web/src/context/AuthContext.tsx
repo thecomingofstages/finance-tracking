@@ -85,17 +85,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const refreshUser = async () => {
     try {
       const { data, error } = await getMeApi();
+      let userData: AuthUser | null = null;
+
       if (data && data.success && data.data) {
-        setUser(data.data as AuthUser);
+        userData = data.data as AuthUser;
       } else if (data && !("success" in data) && (data as any)._id) {
-        setUser(data as AuthUser);
+        userData = data as AuthUser;
       } else {
         // Fallback to Mock Dev User ONLY in development mode so preview works without logging in
         if (process.env.NODE_ENV === "development") {
-          setUser(MOCK_DEV_USER);
-        } else {
-          setUser(null);
+          userData = MOCK_DEV_USER;
         }
+      }
+
+      if (userData) {
+        // Check localStorage if signature was saved client-side
+        if (!userData.signature_image && typeof window !== "undefined" && userData._id) {
+          const cachedSig = localStorage.getItem(`sig_${userData._id}`);
+          if (cachedSig) {
+            userData = { ...userData, signature_image: cachedSig };
+          }
+        }
+        setUser(userData);
+      } else {
+        setUser(null);
       }
     } catch {
       if (process.env.NODE_ENV === "development") {
