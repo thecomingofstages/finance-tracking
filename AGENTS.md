@@ -299,3 +299,38 @@ For human collaborators, see the per-folder READMEs and `docs/`.
   math; never use raw `Number` for currency.
 
 <!-- Agent: append new durable findings below this line. -->
+
+### Deployed-stack E2E (added 2026-09-02)
+
+- **Two E2E suites now exist, both pointed at the real deployment, both separate from the
+  default `npm test`:** `api/tests/e2e/` (Jest, `cd api && npm run test:e2e`, config
+  `api/jest.e2e.config.js`) and `web/tests/e2e/` (Playwright, `cd web && npm run test:e2e`,
+  config `web/playwright.config.ts`). They assert the development plan's behaviour, so a red
+  test is a product defect — never "fix" one by relaxing the assertion. Full findings and a
+  ready-to-paste fix prompt: `docs/e2e-report.md`.
+- **The backend is on Railway** (`finance-tracking-production-83ff.up.railway.app`), not
+  Render. `web/.env.example` still names the retired Render URL — stale.
+- **`npx jest` must be run from `api/`.** The repo root resolves a different (v30) jest whose
+  `--testPathPattern` flag was renamed; running from the root fails confusingly.
+- **`staff_dept` has no write API.** `is_head` / `is_finance` / `is_manager` are readable only.
+  Approval-chain work therefore cannot provision its own actors — use the seeded accounts
+  (`chompoo` head+finance, `mark` plain staff, `beam` owner, password `Passw0rd!2026`) which
+  exist in the hosted database as well as locally.
+- **`FLAG_CHECKS.isHead/isFinance/isManager/isMember` in `Auth.middleware.js` lack the
+  `scope.isGlobal ||` bypass** their sibling predicates have. Consequence: a newly created
+  project is unusable by anyone including its creator, and `role=admin` is refused most reads.
+  Do not treat this as intended scoping.
+- **Money convention is split.** The API is integer satang end to end
+  (`Money.util.js`, `PDF.util.js#formatBaht` divides by 100) but `web/src/lib/format.ts`
+  renders the raw integer, so the UI reads 100x the printed document. Check which side you are
+  on before touching any amount.
+- **`Upload.middleware.js` has no `fileFilter` on any route** — multer enforces size only.
+- **Puppeteer does not run on Railway** (`PDF.util.js:160` launches with no `args` and no
+  `executablePath`; there is no Dockerfile, so Nixpacks ships no Chromium). `format=html`
+  works, `format=pdf` 500s.
+- **`Auth.helper.js#forgotPassword` awaits `Email.sendMail` inline with no timeout**, so the
+  request hangs whenever SMTP is unreachable — and the timing gap against the
+  unknown-address path is an account-enumeration oracle.
+- **Cleanup:** `scripts/e2e-cleanup.sql` soft-deletes `E2E-%` / `@example.invalid` rows and
+  recomputes the `total_expense` aggregates the `transfer` rollup wrote. It ends in `ROLLBACK`
+  by design — inspect, then change to `COMMIT`.
