@@ -331,6 +331,18 @@ For human collaborators, see the per-folder READMEs and `docs/`.
 - **`Auth.helper.js#forgotPassword` awaits `Email.sendMail` inline with no timeout**, so the
   request hangs whenever SMTP is unreachable — and the timing gap against the
   unknown-address path is an account-enumeration oracle.
+- **Playwright lives in the ROOT package.json, not `web/`.** The specs stay at
+  `web/tests/e2e/`, but the dependency and the runner are hoisted so the Cloudflare Workers
+  build never installs or typechecks test tooling. Run it as `npm run test:e2e:web` from the
+  repo root (`npm run test:e2e` runs both suites). `web/tsconfig.json` excludes `tests/e2e`
+  and `playwright.config.ts` — its `include` is a broad `**/*.ts` and `next build` fails on any
+  type error in what it matches, so putting the specs back into that graph breaks the deploy.
+- **`web/package.json` pins `@opennextjs/cloudflare` to an exact version on purpose.** 1.20.6
+  narrowed its peer to `next ">=15.5.24 <16 || >=16.3.3"`, and this app is on next 16.2.6 —
+  inside that gap. A ranged `^1.19.9` therefore re-resolves to a version whose peer check fails
+  and a plain `npm install` in `web/` dies with ERESOLVE. `npm ci` survives only because the
+  committed lockfile happens to pin a compatible build. Do not restore a caret range without
+  moving next to >=16.3.3 in the same change.
 - **Cleanup:** `scripts/e2e-cleanup.sql` soft-deletes `E2E-%` / `@example.invalid` rows and
   recomputes the `total_expense` aggregates the `transfer` rollup wrote. It ends in `ROLLBACK`
   by design — inspect, then change to `COMMIT`.
