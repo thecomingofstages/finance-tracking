@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { formatCurrencyTH } from "@/lib/format";
 
 export interface TagBreakdownWidgetProps {
   tags?: Array<{
@@ -19,12 +20,6 @@ export default function TagBreakdownWidget({
   totalProjectExpense = 0,
   isLoading = false,
 }: TagBreakdownWidgetProps) {
-  const formatTHB = (val: number) => {
-    return `฿${val.toLocaleString("th-TH", {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    })}`;
-  };
 
   // Calculate sum of tag total_expense if totalProjectExpense is 0
   const sumTagExpenses = tags.reduce(
@@ -111,7 +106,7 @@ export default function TagBreakdownWidget({
                       )}
                     </div>
                     <span className="text-slate-600 font-medium">
-                      {formatTHB(expense)}
+                      {formatCurrencyTH(expense)}
                     </span>
                   </div>
 

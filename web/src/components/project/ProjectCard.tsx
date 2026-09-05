@@ -2,6 +2,7 @@
 
 import React from "react";
 import Link from "next/link";
+import { formatCurrencyTH } from "@/lib/format";
 
 export interface ProjectCardProps {
   project: {
@@ -12,23 +13,17 @@ export interface ProjectCardProps {
     description?: string;
     allocated_budget?: number;
     actual_expense?: number;
+    total_expense?: number;
   };
 }
 
 export default function ProjectCard({ project }: ProjectCardProps) {
   const projectId = project._id || project.id || "";
-  const actualExpense = project.actual_expense ?? 0;
+  const actualExpense = project.total_expense ?? project.actual_expense ?? 0;
   const allocatedBudget = project.allocated_budget ?? 0;
 
   const usageRatio = allocatedBudget > 0 ? (actualExpense / allocatedBudget) * 100 : 0;
   const usagePercentage = Math.round(usageRatio);
-
-  const formatTHB = (val: number) => {
-    return `฿${val.toLocaleString("th-TH", {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    })}`;
-  };
 
   const progressBarColor = usageRatio > 90 ? "bg-amber-500" : "bg-blue-900";
 
@@ -55,7 +50,7 @@ export default function ProjectCard({ project }: ProjectCardProps) {
           <div className="flex justify-between items-center text-xs text-slate-600">
             <span className="font-medium">งบประมาณ</span>
             <span className="font-mono font-medium text-slate-800">
-              ใช้ไป <strong className="text-slate-900">{formatTHB(actualExpense)}</strong> / {formatTHB(allocatedBudget)}
+              ใช้ไป <strong className="text-slate-900">{formatCurrencyTH(actualExpense)}</strong> / {formatCurrencyTH(allocatedBudget)}
             </span>
           </div>
           <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden p-0.5">

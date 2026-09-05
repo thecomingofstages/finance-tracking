@@ -14,6 +14,7 @@ interface ProjectItem {
   description?: string;
   allocated_budget?: number;
   actual_expense?: number;
+  total_expense?: number;
 }
 
 const MOCK_FALLBACK_PROJECTS: ProjectItem[] = [
@@ -22,24 +23,27 @@ const MOCK_FALLBACK_PROJECTS: ProjectItem[] = [
     name: "The Coming of Stages 3",
     code: "PRJ-2026-001",
     description: "โครงการผลิตรายการเวทีการแสดงเพื่อความบันเทิงและพัฒนาศักยภาพชุมชน",
-    allocated_budget: 1500000,
-    actual_expense: 450000,
+    allocated_budget: 150000000,
+    actual_expense: 45000000,
+    total_expense: 45000000,
   },
   {
     _id: "p2",
     name: "ระบบบริหารการเงินและงบประมาณ",
     code: "PRJ-2026-002",
     description: "ระบบติดตามงบประมาณ การเบิกจ่าย และการอนุมัติรายจ่ายขององค์กร",
-    allocated_budget: 800000,
-    actual_expense: 720000,
+    allocated_budget: 80000000,
+    actual_expense: 72000000,
+    total_expense: 72000000,
   },
   {
     _id: "p3",
     name: "โครงการจัดหาครุภัณฑ์เทคโนโลยี 2026",
     code: "PRJ-2026-003",
     description: "จัดซื้อเครื่องคอมพิวเตอร์และอุปกรณ์ไอทีสำหรับการทำงานของเจ้าหน้าที่",
-    allocated_budget: 500000,
-    actual_expense: 120000,
+    allocated_budget: 50000000,
+    actual_expense: 12000000,
+    total_expense: 12000000,
   },
 ];
 

@@ -11,6 +11,7 @@ import type { paths } from "./types.gen";
  */
 export const api = createClient<paths>({
   baseUrl: process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/v1",
+  credentials: "include",
 });
 
 /**

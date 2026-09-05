@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { formatCurrencyTH } from "@/lib/format";
 
 export interface DepartmentBudgetWidgetProps {
   departments?: Array<{
@@ -9,6 +10,7 @@ export interface DepartmentBudgetWidgetProps {
     name: string;
     allocated_budget?: number;
     actual_expense?: number;
+    total_expense?: number;
   }>;
   isLoading?: boolean;
 }
@@ -17,12 +19,6 @@ export default function DepartmentBudgetWidget({
   departments = [],
   isLoading = false,
 }: DepartmentBudgetWidgetProps) {
-  const formatTHB = (val: number) => {
-    return `฿${val.toLocaleString("th-TH", {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    })}`;
-  };
 
   if (isLoading) {
     return (
@@ -73,19 +69,19 @@ export default function DepartmentBudgetWidget({
             </div>
           </div>
           <span className="text-xs text-slate-500 font-medium">
-            {departments.length} แผนก
+            {departments.length} ฝ่าย
           </span>
         </div>
 
         {departments.length === 0 ? (
           <div className="py-8 text-center text-slate-500 text-sm">
-            ไม่มีข้อมูลการจัดสรรงบประมาณตามแผนก
+            ไม่มีข้อมูลการจัดสรรงบประมาณตามฝ่าย
           </div>
         ) : (
           <div className="space-y-4">
             {departments.map((dept, index) => {
               const allocated = dept.allocated_budget ?? 0;
-              const actual = dept.actual_expense ?? 0;
+              const actual = (dept as any).total_expense ?? dept.actual_expense ?? 0;
               const ratio = allocated > 0 ? (actual / allocated) * 100 : 0;
               const percentage = Math.round(ratio);
 
@@ -103,7 +99,7 @@ export default function DepartmentBudgetWidget({
                       {dept.name}
                     </span>
                     <span className="text-slate-600 font-medium">
-                      ใช้ไป {formatTHB(actual)} / {formatTHB(allocated)}
+                      ใช้ไป {formatCurrencyTH(actual)} / {formatCurrencyTH(allocated)}
                     </span>
                   </div>
 

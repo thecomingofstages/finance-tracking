@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import { createProjectDepartmentsApi, updateDepartmentApi, deleteDepartmentApi } from "@/lib/api/projects";
+import { formatCurrencyTH, bahtToSatang, satangToBaht } from "@/lib/format";
 import type { ProjectDepartment } from "./types";
 
 interface DepartmentSectionProps {
@@ -10,9 +11,6 @@ interface DepartmentSectionProps {
   isPrivileged: boolean;
   onRefresh: () => void;
 }
-
-const formatTHB = (val: number) =>
-  `฿${val.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 export const DepartmentSection: React.FC<DepartmentSectionProps> = ({ projectId, departments, isPrivileged, onRefresh }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -34,7 +32,7 @@ export const DepartmentSection: React.FC<DepartmentSectionProps> = ({ projectId,
   const openEditModal = (dept: any) => {
     setEditingDept(dept);
     setFormName(dept.name || "");
-    setFormBudget(String(dept.allocated_budget || ""));
+    setFormBudget(dept.allocated_budget ? String(satangToBaht(dept.allocated_budget)) : "");
     setError(null);
     setIsModalOpen(true);
   };
@@ -58,13 +56,14 @@ export const DepartmentSection: React.FC<DepartmentSectionProps> = ({ projectId,
     setIsSubmitting(true);
     setError(null);
     try {
+      const budgetSatang = bahtToSatang(formBudget);
       if (editingDept) {
         await updateDepartmentApi(editingDept._id || editingDept.id!, {
           name: formName.trim(),
-          allocated_budget: Number(formBudget) || 0,
+          allocated_budget: budgetSatang,
         });
       } else {
-        await createProjectDepartmentsApi(projectId, [{ name: formName.trim(), allocated_budget: Number(formBudget) || 0 }]);
+        await createProjectDepartmentsApi(projectId, [{ name: formName.trim(), allocated_budget: budgetSatang }]);
       }
       setIsModalOpen(false);
       onRefresh();
@@ -112,8 +111,8 @@ export const DepartmentSection: React.FC<DepartmentSectionProps> = ({ projectId,
                   return (
                     <tr key={deptId} className="hover:bg-slate-50/80 transition-colors group">
                       <td className="py-3 px-5 font-medium text-slate-900">{dept.name}</td>
-                      <td className="py-3 px-5 text-right">{formatTHB(budget)}</td>
-                      <td className={`py-3 px-5 text-right font-semibold ${isOver ? "text-rose-600" : "text-slate-900"}`}>{formatTHB(expense)}</td>
+                      <td className="py-3 px-5 text-right">{formatCurrencyTH(budget)}</td>
+                      <td className={`py-3 px-5 text-right font-semibold ${isOver ? "text-rose-600" : "text-slate-900"}`}>{formatCurrencyTH(expense)}</td>
                       <td className="py-3 px-5">
                         <div className="flex items-center gap-2">
                           <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
