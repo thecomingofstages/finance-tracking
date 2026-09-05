@@ -2,6 +2,7 @@
 
 import React from "react";
 import Link from "next/link";
+import { formatCurrencyTH } from "@/lib/format";
 
 export interface ProjectCardProps {
   project: {
@@ -12,23 +13,17 @@ export interface ProjectCardProps {
     description?: string;
     allocated_budget?: number;
     actual_expense?: number;
+    total_expense?: number;
   };
 }
 
 export default function ProjectCard({ project }: ProjectCardProps) {
   const projectId = project._id || project.id || "";
-  const actualExpense = project.actual_expense ?? 0;
+  const actualExpense = project.total_expense ?? project.actual_expense ?? 0;
   const allocatedBudget = project.allocated_budget ?? 0;
 
   const usageRatio = allocatedBudget > 0 ? (actualExpense / allocatedBudget) * 100 : 0;
   const usagePercentage = Math.round(usageRatio);
-
-  const formatTHB = (val: number) => {
-    return `฿${val.toLocaleString("th-TH", {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    })}`;
-  };
 
   const progressBarColor = usageRatio > 90 ? "bg-amber-500" : "bg-blue-900";
 
@@ -54,7 +49,7 @@ export default function ProjectCard({ project }: ProjectCardProps) {
         <div className="space-y-2 mb-4 bg-slate-50/80 p-3 rounded-xl border border-slate-100">
           <div className="flex items-center justify-between gap-1 text-xs">
             <span className="text-slate-500 font-medium">งบประมาณ</span>
-            <span className="font-semibold text-slate-900">{formatTHB(allocatedBudget)}</span>
+            <span className="font-semibold text-slate-900">{formatCurrencyTH(allocatedBudget)}</span>
           </div>
           <div className="w-full bg-slate-200/80 rounded-full h-2 overflow-hidden">
             <div
@@ -63,7 +58,7 @@ export default function ProjectCard({ project }: ProjectCardProps) {
             />
           </div>
           <div className="flex items-center justify-between text-[11px] text-slate-500">
-            <span>ใช้ไป <strong className="text-slate-800 font-semibold">{formatTHB(actualExpense)}</strong></span>
+            <span>ใช้ไป <strong className="text-slate-800 font-semibold">{formatCurrencyTH(actualExpense)}</strong></span>
             <span className={`font-bold ${usageRatio > 90 ? "text-rose-600" : "text-blue-900"}`}>{usagePercentage}%</span>
           </div>
         </div>
@@ -72,7 +67,7 @@ export default function ProjectCard({ project }: ProjectCardProps) {
       <div className="flex items-center justify-between pt-3 border-t border-slate-100 text-xs">
         <div className="flex items-center gap-1.5 text-slate-600">
           <span className="font-medium text-slate-500">คงเหลือ:</span>
-          <span className="font-bold text-slate-800">{formatTHB(Math.max(0, allocatedBudget - actualExpense))}</span>
+          <span className="font-bold text-slate-800">{formatCurrencyTH(Math.max(0, allocatedBudget - actualExpense))}</span>
         </div>
 
         <Link

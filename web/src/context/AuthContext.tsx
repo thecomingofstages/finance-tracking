@@ -1,7 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
-import { getMeApi, loginApi, loginViaSupabaseApi } from "../lib/api/auth";
+import { getMeApi, loginApi, loginViaSupabaseApi, refreshApi } from "../lib/api/auth";
 import { setAccessToken } from "../lib/api/client";
 
 export interface ScopeMembership {
@@ -84,9 +84,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const refreshUser = async () => {
     try {
-      const { data, error } = await getMeApi();
-      let userData: AuthUser | null = null;
+      let meRes = await getMeApi();
+      if (meRes.error || !meRes.data) {
+        try {
+          const refreshRes = await refreshApi();
+          const refreshData = refreshRes.data as any;
+          const newToken = refreshData?.data?.access_token || refreshData?.access_token;
+          if (newToken) {
+            setAccessToken(newToken);
+            meRes = await getMeApi();
+          }
+        } catch {
+          // refresh token cookie not available or expired
+        }
+      }
 
+      let userData: AuthUser | null = null;
+      const data = meRes.data;
       if (data && data.success && data.data) {
         userData = data.data as AuthUser;
       } else if (data && !("success" in data) && (data as any)._id) {

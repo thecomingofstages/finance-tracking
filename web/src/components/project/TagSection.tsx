@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import { createProjectTagsApi, updateTagApi, deleteTagApi } from "@/lib/api/projects";
+import { formatCurrencyTH, bahtToSatang, satangToBaht } from "@/lib/format";
 import type { ProjectTag } from "./types";
 
 interface TagSectionProps {
@@ -10,9 +11,6 @@ interface TagSectionProps {
   isPrivileged: boolean;
   onRefresh: () => void;
 }
-
-const formatTHB = (val: number) =>
-  `฿${val.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 export const TagSection: React.FC<TagSectionProps> = ({ projectId, tags, isPrivileged, onRefresh }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -34,7 +32,7 @@ export const TagSection: React.FC<TagSectionProps> = ({ projectId, tags, isPrivi
   const openEditModal = (tag: any) => {
     setEditingTag(tag);
     setFormName(tag.name || "");
-    setFormBudget(String(tag.allocated_budget || ""));
+    setFormBudget(tag.allocated_budget ? String(satangToBaht(tag.allocated_budget)) : "");
     setError(null);
     setIsModalOpen(true);
   };
@@ -58,13 +56,14 @@ export const TagSection: React.FC<TagSectionProps> = ({ projectId, tags, isPrivi
     setIsSubmitting(true);
     setError(null);
     try {
+      const budgetSatang = bahtToSatang(formBudget);
       if (editingTag) {
         await updateTagApi(editingTag._id || editingTag.id!, {
           name: formName.trim(),
-          allocated_budget: Number(formBudget) || 0,
+          allocated_budget: budgetSatang,
         });
       } else {
-        await createProjectTagsApi(projectId, [{ name: formName.trim(), allocated_budget: Number(formBudget) || 0 }]);
+        await createProjectTagsApi(projectId, [{ name: formName.trim(), allocated_budget: budgetSatang }]);
       }
       setIsModalOpen(false);
       onRefresh();
@@ -113,10 +112,10 @@ export const TagSection: React.FC<TagSectionProps> = ({ projectId, tags, isPrivi
                   return (
                     <tr key={tagId} className="hover:bg-slate-50/80 transition-colors group">
                       <td className="py-3 px-5 font-medium text-slate-900">{tag.name}</td>
-                      <td className="py-3 px-5 text-right">{formatTHB(budget)}</td>
-                      <td className="py-3 px-5 text-right text-emerald-600">{formatTHB(income)}</td>
-                      <td className="py-3 px-5 text-right text-rose-600">{formatTHB(expense)}</td>
-                      <td className={`py-3 px-5 text-right font-semibold ${profit >= 0 ? "text-emerald-600" : "text-rose-600"}`}>{formatTHB(profit)}</td>
+                      <td className="py-3 px-5 text-right">{formatCurrencyTH(budget)}</td>
+                      <td className="py-3 px-5 text-right text-emerald-600">{formatCurrencyTH(income)}</td>
+                      <td className="py-3 px-5 text-right text-rose-600">{formatCurrencyTH(expense)}</td>
+                      <td className={`py-3 px-5 text-right font-semibold ${profit >= 0 ? "text-emerald-600" : "text-rose-600"}`}>{formatCurrencyTH(profit)}</td>
                       {isPrivileged && (
                         <td className="py-3 px-5">
                           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity justify-end">

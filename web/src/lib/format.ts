@@ -16,17 +16,32 @@ const toFiniteNumber = (value: unknown): number => {
   return Number.isFinite(n) ? n : 0;
 };
 
-/** Format a currency amount as `฿1,234.56` (default 2 fraction digits). */
+/** Format a satang amount as Thai Baht `฿1,234.56` (default 2 fraction digits). */
 export function formatCurrencyTH(
   value: number | string | null | undefined,
   fractionDigits = 2,
 ): string {
-  const amount = toFiniteNumber(value);
-  const formatted = amount.toLocaleString("th-TH", {
+  const satang = toFiniteNumber(value);
+  const baht = satang / 100;
+  const formatted = baht.toLocaleString("th-TH", {
     minimumFractionDigits: fractionDigits,
     maximumFractionDigits: fractionDigits,
   });
   return `฿${formatted}`;
+}
+
+/** Convert Thai Baht to integer Satang (e.g. 1500 -> 150000). */
+export function bahtToSatang(
+  value: number | string | null | undefined,
+): number {
+  return Math.round(toFiniteNumber(value) * 100);
+}
+
+/** Convert integer Satang to Thai Baht (e.g. 150000 -> 1500). */
+export function satangToBaht(
+  value: number | string | null | undefined,
+): number {
+  return toFiniteNumber(value) / 100;
 }
 
 /** Format an integer as a Thai-locale number with no fraction digits. */

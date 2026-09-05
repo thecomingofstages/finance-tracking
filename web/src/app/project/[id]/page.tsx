@@ -69,16 +69,15 @@ const MOCK_TAGS = [
 ];
 
 const MOCK_REIMBURSEMENTS = [
-  { id: "reim-001", _id: "reim-001", title: "ค่าอุปกรณ์ประกอบฉากรอบซ้อมใหญ่", amount: 15500, status: "waiting", department_name: "ฝ่ายการละคร", created_at: "2026-08-01T10:30:00Z", tag_name: "ค่าอุปกรณ์/วิก/เครื่องแต่งกาย" },
-  { id: "reim-002", _id: "reim-002", title: "ค่าเช่าไมโครโฟนไร้สาย", amount: 8500, status: "head_approve", department_name: "ฝ่ายเทคนิคและสถานที่", created_at: "2026-07-30T14:15:00Z", tag_name: "ค่าสถานที่/เวที" },
-  { id: "reim-003", _id: "reim-003", title: "ค่าพิมพ์โปสเตอร์", amount: 12400, status: "fin_approve", department_name: "ฝ่ายการเงินและบัญชี", created_at: "2026-07-28T11:00:00Z", tag_name: "ค่าสื่อและประชาสัมพันธ์" },
-  { id: "reim-004", _id: "reim-004", title: "ค่าอาหารซ้อมใหญ่", amount: 4200, status: "transfer", department_name: "ฝ่ายการละคร", created_at: "2026-07-25T16:45:00Z", tag_name: "ค่าเบี้ยเลี้ยง/สวัสดิการ" },
+  { id: "reim-001", _id: "reim-001", title: "ค่าอุปกรณ์ประกอบฉากรอบซ้อมใหญ่", amount: 1550000, status: "waiting", department_name: "ฝ่ายการละคร", created_at: "2026-08-01T10:30:00Z", tag_name: "ค่าอุปกรณ์/วิก/เครื่องแต่งกาย" },
+  { id: "reim-002", _id: "reim-002", title: "ค่าเช่าไมโครโฟนไร้สาย", amount: 850000, status: "head_approve", department_name: "ฝ่ายเทคนิคและสถานที่", created_at: "2026-07-30T14:15:00Z", tag_name: "ค่าสถานที่/เวที" },
+  { id: "reim-003", _id: "reim-003", title: "ค่าพิมพ์โปสเตอร์", amount: 1240000, status: "fin_approve", department_name: "ฝ่ายการเงินและบัญชี", created_at: "2026-07-28T11:00:00Z", tag_name: "ค่าสื่อและประชาสัมพันธ์" },
+  { id: "reim-004", _id: "reim-004", title: "ค่าอาหารซ้อมใหญ่", amount: 420000, status: "transfer", department_name: "ฝ่ายการละคร", created_at: "2026-07-25T16:45:00Z", tag_name: "ค่าเบี้ยเลี้ยง/สวัสดิการ" },
 ];
 
-// ── helpers ──────────────────────────────────────────
+import { formatCurrencyTH } from "@/lib/format";
 
-const formatTHB = (val: number) =>
-  `฿${val.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+// ── helpers ──────────────────────────────────────────
 
 const extractList = (data: any) => {
   if (Array.isArray(data)) return data;
@@ -185,7 +184,7 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
                 </div>
               </div>
               <div className={`text-xl font-bold ${card.label === "คงเหลือ" && balance < 0 ? "text-rose-600" : "text-slate-900"}`}>
-                {isLoading ? "..." : formatTHB(card.value)}
+                {isLoading ? "..." : formatCurrencyTH(card.value)}
               </div>
             </div>
           ))}

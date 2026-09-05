@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, ChangeEvent } from "react";
-import { formatCurrencyTH } from "@/lib/format";
+import { formatCurrencyTH, bahtToSatang, satangToBaht } from "@/lib/format";
 
 export interface EditDetailItem {
   id?: string;
@@ -27,7 +27,7 @@ export const ReimbursementEditForm: React.FC<ReimbursementEditFormProps> = ({
   const [purpose, setPurpose] = useState(initialPurpose || "");
   const [details, setDetails] = useState<EditDetailItem[]>(
     initialDetails?.length > 0
-      ? initialDetails.map((d) => ({ id: d._id || d.id, title: d.title, amount: d.amount }))
+      ? initialDetails.map((d) => ({ id: d._id || d.id, title: d.title, amount: satangToBaht(d.amount) }))
       : [{ title: "", amount: 0 }]
   );
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
@@ -56,7 +56,11 @@ export const ReimbursementEditForm: React.FC<ReimbursementEditFormProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSave({ purpose, details, receiptFile });
+    onSave({
+      purpose,
+      details: details.map((d) => ({ ...d, amount: bahtToSatang(d.amount) })),
+      receiptFile,
+    });
   };
 
   const totalAmount = details.reduce((sum, d) => sum + (Number(d.amount) || 0), 0);
@@ -141,7 +145,7 @@ export const ReimbursementEditForm: React.FC<ReimbursementEditFormProps> = ({
         <div className="mt-3 text-right">
           <span className="text-sm text-slate-500">ยอดรวม: </span>
           <span className="text-base font-bold text-slate-900">
-            {formatCurrencyTH(totalAmount, 2)}
+            {formatCurrencyTH(bahtToSatang(totalAmount), 2)}
           </span>
         </div>
       </div>

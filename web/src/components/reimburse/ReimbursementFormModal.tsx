@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef, ChangeEvent, DragEvent } from "reac
 import { useAuth } from "@/context/AuthContext";
 import { getProjectsApi } from "@/lib/api/projects";
 import { createReimbursementApi, uploadReceiptApi } from "@/lib/api/reimbursements";
+import { bahtToSatang } from "@/lib/format";
 
 export interface ReimbursementFormModalProps {
   isOpen: boolean;
@@ -181,7 +182,7 @@ export const ReimbursementFormModal: React.FC<ReimbursementFormModalProps> = ({
       const createRes = await createReimbursementApi({
         department_id,
         purpose: title.trim(),
-        details: [{ title: title.trim(), amount: numAmount }],
+        details: [{ title: title.trim(), amount: bahtToSatang(numAmount) }],
       });
 
       if (createRes.error) {

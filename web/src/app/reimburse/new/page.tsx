@@ -7,6 +7,7 @@ import { AppShell } from "@/components/layout";
 import { CreateReimbursementConfirmModal, CreateReimbursementData } from "@/components/reimburse";
 import { getProjectsApi, getProjectDepartmentsApi, getProjectTagsApi } from "@/lib/api/projects";
 import { getBankAccountsApi } from "@/lib/api/staff";
+import { bahtToSatang } from "@/lib/format";
 
 interface DetailItem {
   id: string;
@@ -178,7 +179,7 @@ export default function NewReimbursementPage() {
       department_id: departmentId,
       tag_id: tagId || null,
       purpose,
-      details: details.map(d => ({ title: d.title, amount: Number(d.amount) })),
+      details: details.map(d => ({ title: d.title, amount: bahtToSatang(d.amount) })),
       receipt_file: receiptFile,
       banking_mode: bankingMode,
     };

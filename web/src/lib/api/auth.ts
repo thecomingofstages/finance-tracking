@@ -10,6 +10,13 @@ export async function loginApi(email: string, password: string) {
 }
 
 /**
+ * Refresh access token using refresh_token cookie (POST /auth/refresh)
+ */
+export async function refreshApi() {
+  return await api.POST("/auth/refresh");
+}
+
+/**
  * First login / claim account (POST /auth/claim) with Supabase session token in Authorization header
  */
 export async function claimApi(password: string, sessionToken: string) {

@@ -10,6 +10,7 @@ export interface ProjectItem {
   code?: string;
   allocated_budget?: number;
   actual_expense?: number;
+  total_expense?: number;
 }
 
 export interface ActiveProjectsWidgetProps {
@@ -69,7 +70,7 @@ export const ActiveProjectsWidget: React.FC<ActiveProjectsWidgetProps> = ({
           <div className="space-y-4">
             {projects.map((project) => {
               const allocated = project.allocated_budget || 0;
-              const actual = project.actual_expense || 0;
+              const actual = project.total_expense ?? project.actual_expense ?? 0;
               const rawPercentage = allocated > 0 ? (actual / allocated) * 100 : 0;
               const displayPercentage = Math.round(rawPercentage);
               const isOver90Percent = rawPercentage > 90;
