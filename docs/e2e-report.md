@@ -11,6 +11,39 @@
 | Database | `https://gdvmhtvawpqmgexajzwx.supabase.co` (Supabase Cloud) | real data, seed rows present |
 | Object storage | Cloudflare R2 (`finance-receipts`, `finance-signatures`) | working |
 
+## Verification re-run — 6 September 2026 (`origin/main`)
+
+Re-run against the deployed stack after the frontend fix branch was merged. **The test files
+were not modified in that merge** — the code was fixed, not the assertions.
+
+| Suite | Before | After |
+|---|---|---|
+| API (`api/tests/e2e/`) | 121 / 141 | **121 / 141** — unchanged |
+| Browser (`web/tests/e2e/`) | 40 / 46 | **42 / 46** |
+
+- **B1 fixed.** The dashboard renders `฿2,315.00` against an API `total_expense` of 231,500
+  satang. Both money tests pass. Input and display now share one conversion boundary.
+- **M2 fixed.** The project card reads ใช้ไป ฿2,315.00 / 46% / คงเหลือ ฿2,685.00. My own test
+  had a race — it sampled `innerText` before the async cards rendered — and wrongly reported
+  this as still broken. Fixed in `fa8f6df`.
+- **B3 half-done, blocked on the backend.** `AuthContext` now calls `/auth/refresh` when
+  `/auth/me` fails, which is the correct client-side pattern. It cannot ever succeed while the
+  API issues the refresh cookie `SameSite=Strict`, because the browser never stores it. One
+  backend line away.
+- **N1 (new, from the fix).** `SignatureUploadModal` now caches the returned signature URL in
+  `localStorage[sig_<userId>]`, and `AuthContext` hydrates `signature_image` from it. That URL
+  is presigned with `X-Amz-Expires=300`, and the fallback value is `previewUrl` — a
+  `URL.createObjectURL` blob that the component revokes on unmount. So the app comes to believe
+  a signature exists while rendering a dead image, and `/auth/me` still returns `null` because
+  B4 is unfixed. This masks the defect rather than fixing it and should be removed once B4 is
+  done server-side.
+- **Backend unchanged.** `api/src` was untouched (only `supabase/seed_demo.sql` was added), and
+  all 20 API failures reproduce exactly: B2, B4, B5, B6, H1–H4, M3, M4.
+- **Still open and frontend-only:** M1 (bind the pending tile to
+  `outstanding_reimbursements.count`, not `pending_count` — the API reports 0 slips against 38
+  outstanding reimbursements) and M5 (a plain staff member is still shown
+  รายการที่ต้องตรวจสอบ 23).
+
 ## Results
 
 | Suite | Command | Total | Passed | Failed |
