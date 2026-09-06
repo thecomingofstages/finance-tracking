@@ -27,6 +27,13 @@ router.get("/:id/departments", ...auth, requireScope("isMember"), ctrl.listDepar
 router.post("/:id/departments", ...auth, requireScope("isManager"), Validate.body(schema.createDepartments), ctrl.createDepartments);
 // #30
 router.get("/:id/staff", ...auth, requireScope("isManager"), ctrl.listStaff);
+// #31/#32 — staff_dept writes. Same isManager gate as the read: whoever may see a project's
+// people may change who they are. The flags these routes set are what Reimbursement.helper.js
+// reads (via its own direct StaffDept queries) to decide who may approve what, so this is the
+// one place in the API that can grant approval authority — keep the gate no looser than this.
+router.post("/:id/staff", ...auth, requireScope("isManager"), Validate.body(schema.addStaff), ctrl.addStaff);
+router.patch("/:id/staff/:membershipId", ...auth, requireScope("isManager"), Validate.body(schema.updateStaff), ctrl.updateStaff);
+router.delete("/:id/staff/:membershipId", ...auth, requireScope("isManager"), ctrl.removeStaff);
 
 // #24, #25, #28, #29 — mounted at top level (/v1/tags/:id, /v1/departments/:id) in routes/init.js.
 // :id here is the tag/department's own id, not a project id — requireScope needs an explicit

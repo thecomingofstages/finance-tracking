@@ -102,6 +102,15 @@ async function select(sql, replacements = {}) {
 /** Endpoint numbers (#N) match docs/backend/03-api-spec.md §2. All filters and scope values are
  * passed through Sequelize named replacements; the only interpolated SQL values are trusted
  * schema/table aliases defined in this file. #53 export and blocked #54 remain separate work. */
+/** Reports aggregate; an aggregate over a non-existent project is legitimately empty, which is
+ *  indistinguishable from a typo'd id unless the project is checked first. */
+async function ensureProjectExists(projectId) {
+  if (!projectId) return;
+  const { Project } = require("../models");
+  const project = await Project.findByPk(projectId);
+  if (!project) throw ApiError.notFound("Project not found.");
+}
+
 class ReportHelper {
   /** #50 — GET /reports/summary */
   static async summary(query, scope = {}) {
@@ -246,6 +255,9 @@ class ReportHelper {
   /** #51 — GET /reports/cashflow */
   static async cashflow(query, scope = {}) {
     const access = resolveProjectAccess(query.project_id, scope, { financeOnly: true });
+    // Without this, an unknown project_id returns a well-formed 200 full of zeroes, and the
+    // frontend cannot tell "this project has no activity yet" from "this id is wrong".
+    await ensureProjectExists(query.project_id);
     const replacements = {};
     const sourceProject = projectPredicate(access, "s.project_id", replacements);
     const departmentProject = projectPredicate(access, "dept.project_id", replacements);

@@ -368,6 +368,25 @@ reimbursements attached.
 **Auth:** project manager. DELETE returns `409` if anyone's still a member or it has live
 reimbursements.
 
+### `POST /projects/:id/staff` — Add someone to a department
+
+Body: `{ staff_id, department_id, is_head?, is_finance?, is_manager? }`. `department_id` must
+belong to this project. `201` on success, `409` if that person is already in that department.
+
+The three flags are what grant approval authority — `is_head` approves for the department,
+`is_finance` approves for the whole project and checks payment slips, `is_manager` manages the
+project and its people. Nothing else in the API sets them.
+
+### `PATCH /projects/:id/staff/:membershipId` — Change someone's flags
+
+Body: any of `is_head`, `is_finance`, `is_manager`. Flags only — to move someone to a different
+department, remove the membership and add a new one, so reimbursements already filed keep
+pointing at the membership they were filed under.
+
+### `DELETE /projects/:id/staff/:membershipId` — Remove someone from a department
+
+Soft delete. `204` on success.
+
 ### `GET /projects/:id/staff` — Staff working on this project
 **Auth:** project manager only
 

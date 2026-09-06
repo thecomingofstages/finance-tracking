@@ -22,7 +22,7 @@ router.post("/me/bank-accounts", ...auth, Validate.body(schema.addBankAccount), 
 router.delete("/me/bank-accounts/:id", ...auth, ctrl.removeBankAccount);
 // #60 — step-up required. multipart/form-data, so no Validate.body — the file itself is
 // checked in Staff.helper.js#uploadSignature, not by a zod object schema.
-router.post("/me/signature", ...auth, requireReauth, upload.signature, ctrl.uploadSignature);
+router.post("/me/signature", ...auth, requireReauth, upload.signature, upload.verifySignature, ctrl.uploadSignature);
 
 // #10-13 — admin-only, mounted under /v1/admin/staff in routes/init.js. requireRole("admin")
 // on purpose, not requireScope("isGlobal") — the latter is broader (finance/owner/admin too;

@@ -1,6 +1,7 @@
 const bcrypt = require("bcrypt");
 const { fn, col, where: sqlWhere } = require("sequelize");
 const ApiError = require("../utils/ApiError.util");
+const R2 = require("../utils/R2.util");
 const JWT = require("../utils/JWT.util");
 const Supabase = require("../utils/Supabase.util");
 const Email = require("../utils/Email.util");
@@ -118,7 +119,10 @@ class AuthHelper {
   static async me(staffId, scope) {
     const staff = await Staff().findByPk(staffId);
     if (!staff) throw ApiError.notFound("Staff not found.");
-    return { ...staff.toSafeJSON(), scope };
+    const safe = staff.toSafeJSON();
+    // signature_image is stored as an R2 key; callers need something loadable.
+    safe.signature_image = await R2.resolveUrl("signatures", safe.signature_image);
+    return { ...safe, scope };
   }
 
   /** #5 — POST /auth/password/forgot. Always the same response regardless of whether the
@@ -131,12 +135,22 @@ class AuthHelper {
     const reset_token = JWT.signResetToken({ sub: staff._id });
     const reset_link = `${appConf.frontendBaseUrl}/reset-password?token=${reset_token}`;
     if (Email.configured) {
-      await Email.sendMail({
+      // Deliberately NOT awaited. Two reasons, and the second is the important one:
+      //
+      //   1. An unreachable SMTP host used to hang this request indefinitely, so the reset
+      //      flow simply did not work in production.
+      //   2. Awaiting made the response time itself an account-enumeration oracle — an
+      //      unknown address returned in ~0.5s while a real one hung. That defeats the whole
+      //      point of the identical `generic` response this function is built around.
+      //
+      // Delivery failures are a mail problem, not a caller problem: log them and move on.
+      Email.sendMail({
         to: staff.email,
         subject: "Reset your TCOS Finance password",
         html: `<p>Someone asked to reset the password for this account.</p><p><a href="${reset_link}">Reset your password</a> — this link expires in 15 minutes.</p><p>If this wasn't you, ignore this email.</p>`,
-      });
-      logger.info({ staffId: staff._id, email: staff.email }, "password reset email sent");
+      })
+        .then(() => logger.info({ staffId: staff._id, email: staff.email }, "password reset email sent"))
+        .catch((err) => logger.error({ err, staffId: staff._id }, "password reset email failed to send"));
     } else {
       // No SMTP_HOST/SMTP_USER/SMTP_PASSWORD set (see Email.util.js) — logging the reset link
       // is a real, working stand-in until an admin fills those in. Grab it from the server log

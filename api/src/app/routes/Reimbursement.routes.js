@@ -22,7 +22,9 @@ router.patch("/:id", ...auth, Validate.body(schema.update), ctrl.update);
 // #45
 router.delete("/:id", ...auth, ctrl.cancel);
 // #46 — multipart, no Validate.body, same reasoning as #49 above.
-router.post("/:id/receipt", ...auth, upload.receipt, ctrl.uploadReceipt);
+// verifyReceipt runs after multer: fileFilter can only see the declared MIME type,
+// the magic-byte check needs the buffer.
+router.post("/:id/receipt", ...auth, upload.receipt, upload.verifyReceipt, ctrl.uploadReceipt);
 // #47 — step-up required on every status change
 router.post("/:id/status", ...auth, requireReauth, Validate.body(schema.changeStatus), ctrl.changeStatus);
 // #48

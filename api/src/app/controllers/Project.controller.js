@@ -47,3 +47,14 @@ exports.removeDepartment = asyncHandler(async (req, res) => {
 });
 
 exports.listStaff = asyncHandler(async (req, res) => ok(res, await Project.listStaff(req.params.id)));
+
+// #31/#32 — staff_dept writes. See Project.helper.js#addStaff for why these exist.
+exports.addStaff = asyncHandler(async (req, res) => created(res, await Project.addStaff(req.params.id, req.body)));
+
+exports.updateStaff = asyncHandler(async (req, res) =>
+  ok(res, await Project.updateStaff(req.params.id, req.params.membershipId, req.body)));
+
+exports.removeStaff = asyncHandler(async (req, res) => {
+  await Project.removeStaff(req.params.id, req.params.membershipId);
+  return noContent(res);
+});

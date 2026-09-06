@@ -62,4 +62,17 @@ async function presignedUrl(bucketKey, key) {
   return getSignedUrl(getClient(), command, { expiresIn: r2.presignTtlSeconds });
 }
 
-module.exports = { buildKey, upload, remove, presignedUrl, configured };
+/**
+ * Turn a stored value into something a browser can load.
+ *
+ * What the database holds is the R2 *key*, because a presigned URL expires and a column is
+ * forever. Older rows may still hold a full URL, and MOCK_MODE hands back mock URLs, so
+ * anything already absolute is passed straight through.
+ */
+async function resolveUrl(bucketKey, keyOrUrl) {
+  if (!keyOrUrl) return null;
+  if (/^https?:\/\//i.test(keyOrUrl)) return keyOrUrl;
+  return presignedUrl(bucketKey, keyOrUrl);
+}
+
+module.exports = { buildKey, upload, remove, presignedUrl, resolveUrl, configured };

@@ -98,11 +98,18 @@ function scopeIncludes(list, targetId) {
  * names: global (isGlobal) OR the named project-scoped flag(s).
  */
 const FLAG_CHECKS = {
-  isHead: (scope, targetId) => scopeIncludes(scope.headOf, targetId),
-  isFinance: (scope, targetId) => scopeIncludes(scope.financeOf, targetId),
-  isManager: (scope, targetId) => scopeIncludes(scope.managerOf, targetId),
+  // Every project-scoped flag admits isGlobal (finance/owner/admin), exactly as the compound
+  // flags below always did. Without it these four are unsatisfiable for anyone who holds no
+  // staff_dept row for the target — which is every admin who was never added to a department,
+  // and *everyone* for a project that was just created, since a new project has no staff_dept
+  // rows by definition. That made `POST /projects` produce an object nobody could read, add a
+  // department to, or tag. It also contradicted the dev plan's "role=Admin ต้องเห็นทุกปุ่ม".
+  isHead: (scope, targetId) => scope.isGlobal || scopeIncludes(scope.headOf, targetId),
+  isFinance: (scope, targetId) => scope.isGlobal || scopeIncludes(scope.financeOf, targetId),
+  isManager: (scope, targetId) => scope.isGlobal || scopeIncludes(scope.managerOf, targetId),
   isMember: (scope, targetId) =>
-    targetId ? scope.memberships.some((m) => m.projectId === targetId) : scope.memberships.length > 0,
+    scope.isGlobal ||
+    (targetId ? scope.memberships.some((m) => m.projectId === targetId) : scope.memberships.length > 0),
   isGlobal: (scope) => scope.isGlobal,
   isFinanceOrAdmin: (scope, targetId) => scope.isGlobal || scopeIncludes(scope.financeOf, targetId),
   isManagerOrFinance: (scope, targetId) =>

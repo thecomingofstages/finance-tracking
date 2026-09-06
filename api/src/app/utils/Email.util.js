@@ -24,6 +24,12 @@ function getTransporter() {
     port: email.port,
     secure: email.secure,
     auth: { user: emailKeys.user, pass: emailKeys.password },
+    // Without these, nodemailer waits on its own defaults (minutes) before giving up. Some
+    // hosts — Railway among them on certain plans — block outbound SMTP ports outright, so
+    // the socket never connects and never errors quickly. Fail fast and log instead.
+    connectionTimeout: 10_000,
+    greetingTimeout: 10_000,
+    socketTimeout: 20_000,
   });
   return transporter;
 }

@@ -340,6 +340,88 @@ class ProjectHelper {
       };
     });
   }
+
+  /**
+   * #31 — POST /projects/:id/staff. Assign a staff member to one of this project's
+   * departments, with the approval flags that department membership carries.
+   *
+   * This route exists because is_head / is_finance / is_manager were previously writable only
+   * by hand-editing Postgres (docs/backend/03-api-spec.md §5 scoped staff_dept as manual-only).
+   * That is untenable once the system is handed over: appointing a department head is ordinary
+   * administration, not a schema migration. Reads already existed via #30.
+   */
+  static async addStaff(projectId, body) {
+    const { staff_id, department_id, is_head = false, is_finance = false, is_manager = false } = body || {};
+    if (!staff_id) throw ApiError.validation("staff_id is required.", "staff_id");
+    if (!department_id) throw ApiError.validation("department_id is required.", "department_id");
+
+    const { Project, Department, Staff, StaffDept, sequelize } = require("../models");
+    return sequelize.transaction(async (transaction) => {
+      await ensureProject(Project, projectId, { transaction });
+
+      // The department must belong to THIS project — otherwise a caller scoped to project A
+      // could grant themselves is_finance on a department of project B.
+      const department = await Department.findOne({ where: { _id: department_id, project_id: projectId }, transaction });
+      if (!department) throw ApiError.notFound("Department not found in this project.");
+
+      const staff = await Staff.findByPk(staff_id, { transaction });
+      if (!staff) throw ApiError.notFound("Staff not found.");
+
+      const existing = await StaffDept.findOne({ where: { staff_id, department_id }, transaction });
+      if (existing) throw ApiError.conflict("This staff member is already in that department.");
+
+      const row = await StaffDept.create(
+        { staff_id, department_id, is_head, is_finance, is_manager },
+        { transaction }
+      );
+      return toPlain(row);
+    });
+  }
+
+  /** #32 — PATCH /projects/:id/staff/:membershipId. Flags only; moving someone between
+   *  departments is a remove plus an add, so that the reimbursements pointing at the old
+   *  staff_dept row keep meaning what they meant when they were filed. */
+  static async updateStaff(projectId, membershipId, body) {
+    const patch = {};
+    for (const flag of ["is_head", "is_finance", "is_manager"]) {
+      if (body?.[flag] !== undefined) patch[flag] = Boolean(body[flag]);
+    }
+    if (!Object.keys(patch).length) {
+      throw ApiError.validation("Nothing to update — pass is_head, is_finance or is_manager.", "is_head");
+    }
+
+    const { Project, Department, StaffDept, sequelize } = require("../models");
+    return sequelize.transaction(async (transaction) => {
+      await ensureProject(Project, projectId, { transaction });
+      const membership = await StaffDept.findByPk(membershipId, {
+        include: [{ model: Department, as: "department", required: true, attributes: ["_id", "project_id"] }],
+        transaction,
+      });
+      if (!membership || toPlain(membership).department.project_id !== projectId) {
+        throw ApiError.notFound("Membership not found in this project.");
+      }
+      await membership.update(patch, { transaction });
+      return toPlain(await StaffDept.findByPk(membershipId, { transaction }));
+    });
+  }
+
+  /** #32b — DELETE /projects/:id/staff/:membershipId. Soft delete: staff_dept.deleted_at is
+   *  the person's leave time, and reimbursement.staff_dept_id still references this row, so a
+   *  hard delete would orphan filed reimbursements. */
+  static async removeStaff(projectId, membershipId) {
+    const { Project, Department, StaffDept, sequelize } = require("../models");
+    return sequelize.transaction(async (transaction) => {
+      await ensureProject(Project, projectId, { transaction });
+      const membership = await StaffDept.findByPk(membershipId, {
+        include: [{ model: Department, as: "department", required: true, attributes: ["_id", "project_id"] }],
+        transaction,
+      });
+      if (!membership || toPlain(membership).department.project_id !== projectId) {
+        throw ApiError.notFound("Membership not found in this project.");
+      }
+      await membership.destroy({ transaction });
+    });
+  }
 }
 
 module.exports = ProjectHelper;
