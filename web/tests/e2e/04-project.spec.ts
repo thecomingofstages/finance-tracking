@@ -26,6 +26,9 @@ test.describe("/project/<id>", () => {
     await login(page, "head");
     await navigateInApp(page, "/project");
     await page.waitForURL(/\/project/, { timeout: 15000 });
+    // The cards render from an async GET /projects, so wait for a real figure before sampling
+    // innerText — otherwise this reads the placeholder state and reports a defect that isn't.
+    await expect(page.locator("body")).toContainText(/ใช้ไป\s*฿[\d,]+\.\d{2}/, { timeout: 15000 });
     const body = await page.locator("body").innerText();
     const spent = [...body.matchAll(/ใช้ไป\s*฿([\d,]+\.\d{2})/g)].map((m) => m[1].replace(/,/g, ""));
     expect(spent.length).toBeGreaterThan(0);
