@@ -9,7 +9,8 @@
     "dev": "node --watch src/index.js",
     "lint": "eslint src",
     "test": "jest",
-    "gen:client": "node scripts/generate-fe-client.js"
+    "gen:client": "node scripts/generate-fe-client.js",
+    "test:e2e": "jest --config jest.e2e.config.js"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.632.0",

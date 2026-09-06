@@ -27,5 +27,10 @@
 		]
 	},
 	"include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts", ".next/dev/types/**/*.ts"],
-	"exclude": ["node_modules"]
+	// `include` is a broad `**/*.ts`, and `next build` fails on any type error in what it
+	// matches — so the Playwright suite has to be excluded explicitly or it becomes part of the
+	// Cloudflare Workers build. @playwright/test is a root devDependency (see the root
+	// package.json), deliberately absent from web/node_modules, so leaving these in would fail
+	// the deploy on unresolved types. Run them with `npm run test:e2e:web` from the repo root.
+	"exclude": ["node_modules", "tests/e2e", "playwright.config.ts"]
 }

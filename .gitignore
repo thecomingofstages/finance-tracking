@@ -59,3 +59,8 @@ next-env.d.ts
 # User private assets
 รูปเเผนงาน/
 รูปแผนงาน/
+# Playwright (web/) — run artefacts, never source
+test-results/
+playwright-report/
+blob-report/
+.playwright/

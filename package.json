@@ -13,7 +13,11 @@
     "install:all": "npm install && npm install --prefix api && npm install --prefix web",
     "dev": "concurrently -n API,WEB -c blue,green \"npm run dev --prefix api\" \"npm run dev --prefix web\"",
     "dev:api": "npm run dev --prefix api",
-    "dev:web": "npm run dev --prefix web"
+    "dev:web": "npm run dev --prefix web",
+    "_comment:e2e": "Playwright lives here, not in web/, so the Cloudflare Workers build never installs or typechecks test tooling. The specs still sit next to the app they drive (web/tests/e2e); only the dependency and the runner are hoisted.",
+    "test:e2e:api": "npm run test:e2e --prefix api",
+    "test:e2e:web": "playwright test --config web/playwright.config.ts",
+    "test:e2e": "npm run test:e2e:api && npm run test:e2e:web"
   },
   "repository": {
     "type": "git",
@@ -27,6 +31,7 @@
   "homepage": "https://github.com/thecomingofstages/finance-tracking#readme",
   "devDependencies": {
     "@opennextjs/cloudflare": "^1.14.1",
+    "@playwright/test": "^1.62.1",
     "concurrently": "^8.2.2",
     "supabase": "^2.109.1"
   },
