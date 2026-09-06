@@ -2,6 +2,7 @@
 
 import React, { useState, useMemo } from "react";
 import { StatusBadge } from "@/components/reimburse";
+import { formatCurrencyTH } from "@/lib/format";
 import type { ReimbursementItem, ProjectDepartment, ProjectTag } from "./types";
 
 interface ExpenseHistorySectionProps {
@@ -10,9 +11,6 @@ interface ExpenseHistorySectionProps {
   tags: ProjectTag[];
   onItemClick?: (item: ReimbursementItem) => void;
 }
-
-const formatTHB = (val: number) =>
-  `฿${val.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 const ITEMS_PER_PAGE = 20;
 
@@ -162,7 +160,7 @@ export const ExpenseHistorySection: React.FC<ExpenseHistorySectionProps> = ({
                     <td className="py-3 px-5 font-medium text-slate-900 max-w-xs truncate">{title}</td>
                     <td className="py-3 px-5 text-slate-500">{tagName}</td>
                     <td className="py-3 px-5 text-slate-500">{deptName}</td>
-                    <td className="py-3 px-5 text-right font-semibold text-slate-900">{formatTHB(amount)}</td>
+                    <td className="py-3 px-5 text-right font-semibold text-slate-900">{formatCurrencyTH(amount)}</td>
                     <td className="py-3 px-5"><StatusBadge status={status} /></td>
                     <td className="py-3 px-5 text-slate-500 whitespace-nowrap">{formattedDate}</td>
                   </tr>

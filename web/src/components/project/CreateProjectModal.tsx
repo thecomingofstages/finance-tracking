@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { createProjectApi } from "@/lib/api/projects";
+import { bahtToSatang } from "@/lib/format";
 
 export interface CreateProjectModalProps {
   isOpen: boolean;
@@ -66,7 +67,7 @@ export default function CreateProjectModal({
         name: name.trim(),
         code: code.trim() || undefined,
         description: description.trim() || undefined,
-        allocated_budget: budgetNum,
+        allocated_budget: bahtToSatang(budgetNum),
       });
 
       if (res.error || (res.response && !res.response.ok)) {

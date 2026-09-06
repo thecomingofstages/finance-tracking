@@ -6,6 +6,7 @@ import {
   updateSourceApi,
   deleteSourceApi,
 } from "@/lib/api/projects";
+import { formatCurrencyTH, bahtToSatang, satangToBaht } from "@/lib/format";
 import type { ProjectSource, ProjectTag } from "./types";
 import { ConfirmDeleteModal } from "./ConfirmDeleteModal";
 
@@ -30,9 +31,6 @@ interface SourceSectionProps {
   isPrivileged: boolean;
   onRefresh: () => void;
 }
-
-const formatTHB = (val: number) =>
-  `฿${val.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 export const SourceSection: React.FC<SourceSectionProps> = ({
   projectId,
@@ -80,7 +78,7 @@ export const SourceSection: React.FC<SourceSectionProps> = ({
     setFormName(src.name || "");
     setFormReferenceId(src.reference_id || "");
     setFormTagId(src.tag_id || "");
-    setFormExpectAmount(String(src.expect_amount || ""));
+    setFormExpectAmount(src.expect_amount ? String(satangToBaht(src.expect_amount)) : "");
     setError(null);
     setIsModalOpen(true);
   };
@@ -116,18 +114,19 @@ export const SourceSection: React.FC<SourceSectionProps> = ({
     setIsSubmitting(true);
     setError(null);
     try {
+      const expectSatang = bahtToSatang(formExpectAmount);
       if (editingSource) {
         await updateSourceApi(editingSource._id || editingSource.id!, {
           name: formName.trim(),
           tag_id: formTagId || null,
-          expect_amount: Number(formExpectAmount) || 0,
+          expect_amount: expectSatang,
         });
       } else {
         const body: any = {
           type: formType,
           name: formName.trim(),
           tag_id: formTagId || undefined,
-          expect_amount: Number(formExpectAmount) || 0,
+          expect_amount: expectSatang,
         };
         if ((formType === "enroll" || formType === "merch") && formReferenceId.trim()) {
           body.reference_id = formReferenceId.trim();
@@ -195,10 +194,10 @@ export const SourceSection: React.FC<SourceSectionProps> = ({
                         
                         <div className="flex items-center gap-6 shrink-0">
                           <div className="text-right">
-                            <span className="text-sm font-bold text-slate-900 block">{formatTHB(Number(src.expect_amount) || 0)}</span>
+                            <span className="text-sm font-bold text-slate-900 block">{formatCurrencyTH(src.expect_amount)}</span>
                             {(src.actual_amount != null && src.actual_amount !== src.expect_amount) && (
                               <span className="text-[11px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded block mt-0.5">
-                                {formatTHB(Number(src.actual_amount) || 0)} จริง
+                                {formatCurrencyTH(src.actual_amount)} จริง
                               </span>
                             )}
                           </div>
@@ -230,10 +229,10 @@ export const SourceSection: React.FC<SourceSectionProps> = ({
           <div className="mt-8 bg-blue-50/50 border border-blue-100 rounded-xl p-5 flex items-center justify-between">
             <span className="text-base font-bold text-slate-800">ยอดรวมแหล่งเงินได้ทั้งหมด</span>
             <div className="text-right">
-              <span className="text-2xl font-black text-blue-900 tracking-tight block">{formatTHB(grandTotalExpect)}</span>
+              <span className="text-2xl font-black text-blue-900 tracking-tight block">{formatCurrencyTH(grandTotalExpect)}</span>
               {grandTotalActual !== grandTotalExpect && (
                 <span className="text-sm font-semibold text-emerald-600 block mt-1">
-                  ยอดเข้าจริง: {formatTHB(grandTotalActual)}
+                  ยอดเข้าจริง: {formatCurrencyTH(grandTotalActual)}
                 </span>
               )}
             </div>
