@@ -30,6 +30,11 @@ export interface AuthUser {
   role?: string;
   signature_image?: string | null;
   scope?: Scope;
+  /** Server-published policy, from GET /auth/me. Read it rather than hardcoding the rule —
+   *  `require_signature` is toggled with REQUIRE_SIGNATURE on the API. Absent means "on". */
+  features?: {
+    require_signature?: boolean;
+  };
 }
 
 export interface LoginResult {

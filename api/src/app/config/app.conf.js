@@ -55,4 +55,18 @@ module.exports = {
   // See docs/backend/02-database.md §6 — no rollup triggers exist yet, so helpers must
   // maintain aggregate columns explicitly once MOCK_MODE is off.
   mockMode: process.env.MOCK_MODE !== "false",
+
+  /**
+   * Whether an approver must have a stored digital signature before they can act on a
+   * reimbursement (dev plan /reimburse/<id>: "ขอรูปลายเซ็นต์ (ถ้ายังไม่มีรูป)").
+   *
+   * The signature exists to be stamped onto the rendered ใบเบิกเงิน / ใบสำคัญจ่าย. While
+   * document rendering is unavailable the requirement collects an image nothing consumes and
+   * blocks every approval, so this switch turns it off without deleting the feature. Default
+   * stays true: the flag is a temporary accommodation, not a new default.
+   *
+   * Turning it off never invalidates signatures already stored, and never relaxes the step-up
+   * password check — that is a separate control (requireReauth) and is not affected.
+   */
+  requireSignature: process.env.REQUIRE_SIGNATURE !== "false",
 };

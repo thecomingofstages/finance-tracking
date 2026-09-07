@@ -60,11 +60,22 @@ export async function getReimbursementDetailApi(id: string) {
 
 /**
  * Update reimbursement status (POST /reimbursements/{id}/status)
+ *
+ * The endpoint accepts exactly `status`, `tracking_id` and `reason` — there is no `note`
+ * field and never was. This used to send `note`, which the API silently dropped, and packed
+ * the tracking id inside it as `[Tracking: X] ...` when both were filled. The visible effect
+ * was that finance approval could not succeed at all: `head_approve -> fin_approve` requires
+ * `tracking_id`, which never arrived, so every attempt came back 400.
+ *
+ * Which field is required depends on the transition (Approval.helper.js TRANSITIONS):
+ *   head_approve -> fin_approve   requires tracking_id
+ *   any          -> rejected      requires reason
+ *   everything else               neither
  */
 export async function updateReimbursementStatusApi(
   id: string,
   status: string,
-  note?: string,
+  fields?: { tracking_id?: string; reason?: string },
   reauthToken?: string
 ) {
   return await api.POST("/reimbursements/{id}/status", {
@@ -73,7 +84,8 @@ export async function updateReimbursementStatusApi(
     },
     body: {
       status: status as any,
-      note,
+      ...(fields?.tracking_id ? { tracking_id: fields.tracking_id } : {}),
+      ...(fields?.reason ? { reason: fields.reason } : {}),
     } as any,
     headers: reauthToken ? { "X-Reauth-Token": reauthToken } : undefined,
   });

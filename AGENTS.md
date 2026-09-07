@@ -300,6 +300,41 @@ For human collaborators, see the per-folder READMEs and `docs/`.
 
 <!-- Agent: append new durable findings below this line. -->
 
+### Reimbursement approval pass (2026-09-07, `kkattmos/fix-reimburse-approval`)
+
+- **`POST /reimbursements/:id/status` takes `status`, `tracking_id`, `reason` — there is no
+  `note`.** The web client used to send `note` (silently dropped) and packed the tracking id
+  inside it as `[Tracking: X] …`, so finance approval 400'd every time. Which field is required
+  is per-transition, in `Approval.helper.js` TRANSITIONS — mirror that table in the UI, don't
+  invent fields.
+- **`req.scope` is camelCase internally but MUST go on the wire snake_case** — swagger's Scope
+  schema and the whole frontend are snake_case. `Auth.middleware.js#toPublicScope` converts at
+  the boundary. Emitting camelCase made every `is_head`/`head_of` check in the UI silently
+  `undefined`.
+- **`GET /reimbursements/:id` and `GET /reimbursements` must stay in step.** The detail response
+  was missing `department_id` / `project_id` / `requester`, which the list already had — so the
+  UI could not tell which department a request belonged to and fell back to "head of *any*
+  department". Both shapes come from `detailJSON` / the list projection; change them together.
+- **`openapi-fetch` returns the API envelope, not the payload.** `res.data` is
+  `{ success, data }`; the reimbursement is `res.data.data`. The `[id]` page never unwrapped it,
+  so every field read off `record` was `undefined` and `latestStatus` fell through to its
+  `"waiting"` default.
+- **`REQUIRE_SIGNATURE=false`** turns off the approval signature requirement while PDF rendering
+  is unavailable. It is a *published policy* (`GET /auth/me` -> `features.require_signature`),
+  not a server-side gate — the API never enforced signatures on approval. Default stays `true`.
+- **`initOpenNextCloudflareForDev()` must stay guarded on `NODE_ENV === "development"`.**
+  Unguarded it also runs under `next start`, which then resolves pages against `.next/dev/…`
+  and dies with ENOENT, so `npm run start` could never serve a production build locally.
+- **Killing a local dev server by pid file or `pkill -f` is unreliable and cost hours here.**
+  A stale pid means the "restart" silently fails with EADDRINUSE and you keep testing the OLD
+  build — this happened four times. Kill by port instead:
+  `for p in $(ss -ltnpH "sport = :3000" | grep -oE 'pid=[0-9]+' | cut -d= -f2); do kill -9 $p; done`
+  and always confirm the new process actually logged "listening" before trusting a result.
+  `pkill -f "src/index.js"` additionally matches its own shell and kills the tool call.
+- **`next dev` cannot exercise real auth**: `AuthContext` falls back to `MOCK_DEV_USER` whenever
+  `/auth/me` fails, gated on `NODE_ENV === "development"`. Use a production build for any
+  authorization testing.
+
 ### Backend fix pass (2026-09-06, `kkattmos/fix-backend`)
 
 - **`npm test` in `api/` is unit-only again** — `api/jest.config.js` now ignores `tests/e2e/`.

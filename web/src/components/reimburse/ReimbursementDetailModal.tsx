@@ -27,7 +27,10 @@ export const ReimbursementDetailModal: React.FC<ReimbursementDetailModalProps> =
   // Action / Step-up password dialog state
   const [actionType, setActionType] = useState<"approve" | "reject" | null>(null);
   const [password, setPassword] = useState<string>("");
-  const [note, setNote] = useState<string>("");
+  // `reason` and `tracking_id` are the only two fields the status endpoint accepts alongside
+  // `status`. There is no "note" — what used to be collected here was silently discarded.
+  const [reason, setReason] = useState<string>("");
+  const [trackingIdInput, setTrackingIdInput] = useState<string>("");
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [copiedTrackingId, setCopiedTrackingId] = useState<boolean>(false);
@@ -127,14 +130,16 @@ export const ReimbursementDetailModal: React.FC<ReimbursementDetailModalProps> =
   const handleOpenActionDialog = (type: "approve" | "reject") => {
     setActionType(type);
     setPassword("");
-    setNote("");
+    setReason("");
+    setTrackingIdInput("");
     setError(null);
   };
 
   const handleCloseActionDialog = () => {
     setActionType(null);
     setPassword("");
-    setNote("");
+    setReason("");
+    setTrackingIdInput("");
     setError(null);
   };
 
@@ -142,6 +147,16 @@ export const ReimbursementDetailModal: React.FC<ReimbursementDetailModalProps> =
     e.preventDefault();
     if (!password) {
       setError("กรุณากรอกรหัสผ่านเพื่อยืนยันตัวตน");
+      return;
+    }
+    // Mirror the server's per-transition requirements so the user gets a field-level message
+    // instead of a bare 400 from the API.
+    if (actionType === "reject" && !reason.trim()) {
+      setError("กรุณาระบุเหตุผลในการปฏิเสธคำขอ");
+      return;
+    }
+    if (actionType === "approve" && status === "head_approve" && !trackingIdInput.trim()) {
+      setError("กรุณากรอกรหัสรายการ (Tracking ID)");
       return;
     }
 
@@ -175,7 +190,11 @@ export const ReimbursementDetailModal: React.FC<ReimbursementDetailModalProps> =
       const updateRes = await updateReimbursementStatusApi(
         rawId,
         nextStatus,
-        note.trim() || undefined,
+        nextStatus === "rejected"
+          ? { reason: reason.trim() }
+          : nextStatus === "fin_approve"
+            ? { tracking_id: trackingIdInput.trim() }
+            : {},
         verifyRes.reauth_token
       );
 
@@ -213,7 +232,16 @@ export const ReimbursementDetailModal: React.FC<ReimbursementDetailModalProps> =
       Boolean(user.scope?.head_of && user.scope.head_of.length > 0) ||
       Boolean(user.scope?.memberships?.some((m) => m.is_head));
 
-    if (status === "waiting") return isHead || isFinanceOrAdmin;
+    // waiting -> head_approve is the department head's decision alone (Approval.helper.js
+    // requires isHead, resolved from a real staff_dept row). Offering it to finance/admin
+    // produced a button that always came back 403.
+    const departmentId = item?.department_id;
+    const isHeadOfThisDepartment =
+      Boolean(departmentId) &&
+      (Boolean(user.scope?.head_of?.includes(departmentId)) ||
+        Boolean(user.scope?.memberships?.some((m) => m.is_head && m.department_id === departmentId)));
+
+    if (status === "waiting") return isHeadOfThisDepartment;
     if (status === "head_approve") return isFinanceOrAdmin;
     return false;
   })();
@@ -572,22 +600,47 @@ export const ReimbursementDetailModal: React.FC<ReimbursementDetailModalProps> =
                 />
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
-                  หมายเหตุ / เหตุผลเพิ่มเติม
-                </label>
-                <textarea
-                  rows={2}
-                  value={note}
-                  onChange={(e) => setNote(e.target.value)}
-                  placeholder={
-                    actionType === "reject"
-                      ? "ระบุเหตุผลในการปฏิเสธคำขอ"
-                      : "ระบุข้อความเพิ่มเติม (ถ้ามี)"
-                  }
-                  className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-900 focus:border-transparent resize-none"
-                />
-              </div>
+              {/* Only the field this particular transition actually takes. Approving as a
+                  department head needs nothing beyond the password; finance approval needs the
+                  tracking id; a rejection needs a reason. Anything else was collected and
+                  thrown away by the API. */}
+              {actionType === "reject" && (
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+                    เหตุผลในการปฏิเสธ <span className="text-red-500">*</span>
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={reason}
+                    onChange={(e) => setReason(e.target.value)}
+                    placeholder="ระบุเหตุผลในการปฏิเสธคำขอ"
+                    required
+                    className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-900 focus:border-transparent resize-none"
+                  />
+                  <p className="mt-1 text-[11px] text-slate-500">
+                    ผู้ขอเบิกจะเห็นเหตุผลนี้ และสามารถแก้ไขคำขอแล้วส่งใหม่ได้
+                  </p>
+                </div>
+              )}
+
+              {actionType === "approve" && status === "head_approve" && (
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+                    รหัสรายการ (Tracking ID) <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={trackingIdInput}
+                    onChange={(e) => setTrackingIdInput(e.target.value)}
+                    placeholder="เช่น TCOS3-0001"
+                    required
+                    className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-sm text-slate-800 font-mono focus:outline-none focus:ring-2 focus:ring-blue-900 focus:border-transparent"
+                  />
+                  <p className="mt-1 text-[11px] text-slate-500">
+                    รหัสที่ฝ่ายการเงินใช้ติดตามรายการนี้ในระบบบัญชี
+                  </p>
+                </div>
+              )}
 
               <div className="flex items-center justify-end space-x-3 pt-3 border-t border-slate-100">
                 <button

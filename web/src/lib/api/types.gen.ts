@@ -338,6 +338,11 @@ export interface paths {
                         "application/json": components["schemas"]["Envelope"] & {
                             data?: components["schemas"]["Staff"] & {
                                 scope?: components["schemas"]["Scope"];
+                                /** @description Server-side policy the UI must honour rather than hardcode its own copy of. */
+                                features?: {
+                                    /** @description Whether an approver must have a stored digital signature before acting on a reimbursement. Set REQUIRE_SIGNATURE=false to suspend the requirement while document rendering is unavailable — the signature is only consumed by the rendered ใบเบิกเงิน / ใบสำคัญจ่าย, so until those render it collects an image nothing reads while blocking every approval. This is advisory: the API does not itself reject an unsigned approval (it never did), and turning it off does not relax the step-up password check, which is a separate control. */
+                                    require_signature?: boolean;
+                                };
                             };
                         };
                     };

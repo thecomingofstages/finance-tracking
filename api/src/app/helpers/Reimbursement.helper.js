@@ -141,9 +141,25 @@ async function detailJSON(record, { canSeeFullBankAccount = false } = {}) {
     bankAccount.number = canSeeFullBankAccount ? bankAccount.number : maskedNumber(bankAccount.number);
   }
 
+  // The flat identity fields below already exist on the LIST response (#42) but were missing
+  // here, so a client holding only a detail payload could not tell which department or project
+  // a reimbursement belonged to. The UI needs exactly that to decide whether the viewer is head
+  // of THIS department — without it the best it could do was "head of any department", which
+  // showed the approve button to the wrong people. Keep the two shapes in step.
+  const department = membership?.department;
+  const project = department?.project;
+  const details = plain.details || [];
+
   return {
     ...plain,
     receipt_link: receiptLink,
+    amount: details.reduce((sum, d) => sum + (Number(d.amount) || 0), 0),
+    department_id: membership?.department_id ?? null,
+    department_name: department?.name ?? null,
+    project_id: department?.project_id ?? null,
+    project_name: project?.name ?? null,
+    requester: membership?.staff ?? null,
+    requester_name: membership?.staff ? `${membership.staff.first_name} ${membership.staff.last_name}` : null,
     staffDept: membership || undefined,
     bankAccount: bankAccount || undefined,
     history: historyRecords.map((entryRecord) => {
