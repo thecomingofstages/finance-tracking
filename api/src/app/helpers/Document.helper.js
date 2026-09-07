@@ -2,6 +2,7 @@ const ApiError = require("../utils/ApiError.util");
 const PDF = require("../utils/PDF.util");
 const Money = require("../utils/Money.util");
 const QR = require("../utils/QR.util");
+const R2 = require("../utils/R2.util");
 
 class DocumentHelper {
   /** #48 — GET /reimbursements/:id/document. Real record load, real authorization (via
@@ -44,12 +45,16 @@ class DocumentHelper {
       bank_account: account
         ? { name: account.name, provider: account.provider, number: canSeeFullBankAccount ? account.number : account.maskedNumber }
         : null,
-      history: reimbursement.history.map((h) => ({
-        status: h.status,
-        staff_name: h.staff ? `${h.staff.first_name} ${h.staff.last_name}` : null,
-        signature_image: h.staff?.signature_image ?? null,
-        created_at: h.created_at,
-      })),
+      // signature_image is stored as an R2 key, so each approver's signature has to be
+      // resolved to a loadable URL before the template can render it.
+      history: await Promise.all(
+        reimbursement.history.map(async (h) => ({
+          status: h.status,
+          staff_name: h.staff ? `${h.staff.first_name} ${h.staff.last_name}` : null,
+          signature_image: await R2.resolveUrl("signatures", h.staff?.signature_image ?? null),
+          created_at: h.created_at,
+        }))
+      ),
       qr: await QR.verificationQrDataUri(reimbursementId),
     };
 

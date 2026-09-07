@@ -32,6 +32,21 @@ const updateTag = z.object({
   allocated_budget: z.number().int().nonnegative().optional(),
 });
 
+// #31/#32 — staff_dept membership. The flags are what make a department head a head, so they
+// are explicit booleans rather than a role string: a person can be head AND finance.
+const addStaff = z.object({
+  staff_id: z.string().uuid(),
+  department_id: z.string().uuid(),
+  is_head: z.boolean().optional(),
+  is_finance: z.boolean().optional(),
+  is_manager: z.boolean().optional(),
+});
+const updateStaff = z.object({
+  is_head: z.boolean().optional(),
+  is_finance: z.boolean().optional(),
+  is_manager: z.boolean().optional(),
+});
+
 const departmentItem = z.object({
   name: z.string().min(1),
   allocated_budget: z.number().int().nonnegative().optional(),
@@ -42,4 +57,7 @@ const updateDepartment = z.object({
   allocated_budget: z.number().int().nonnegative().optional(),
 });
 
-module.exports = { list, create, update, createTags, updateTag, createDepartments, updateDepartment };
+module.exports = {
+  list, create, update, createTags, updateTag, createDepartments, updateDepartment,
+  addStaff, updateStaff,
+};

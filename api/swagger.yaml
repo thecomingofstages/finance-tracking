@@ -673,6 +673,74 @@ paths:
       summary: List project staff — manager only (#30)
       parameters: [{ $ref: "#/components/parameters/idParam" }]
       responses: { "200": { description: OK }, "403": { $ref: "#/components/responses/Forbidden" } }
+    post:
+      tags: [Project]
+      summary: Assign a staff member to a department in this project (#31)
+      description: >
+        Writes the staff_dept row that grants approval authority. is_head lets the member
+        approve reimbursements for that department; is_finance lets them approve for the whole
+        project and check payment slips; is_manager lets them manage the project and its
+        people. Previously these flags were only settable by editing Postgres by hand, which
+        left no way to appoint a department head after handover. department_id must belong to
+        this project. 409 if the member is already in that department.
+      parameters: [{ $ref: "#/components/parameters/idParam" }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [staff_id, department_id]
+              properties:
+                staff_id: { type: string, format: uuid }
+                department_id: { type: string, format: uuid }
+                is_head: { type: boolean, default: false }
+                is_finance: { type: boolean, default: false }
+                is_manager: { type: boolean, default: false }
+      responses:
+        "201": { description: Created }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: "Project, department or staff not found" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /projects/{id}/staff/{membershipId}:
+    patch:
+      tags: [Project]
+      summary: Update a membership's approval flags (#32)
+      description: >
+        Flags only. Moving someone to a different department is a delete plus a create, so that
+        reimbursements already filed against the old staff_dept row keep meaning what they meant
+        when they were filed.
+      parameters:
+        - { $ref: "#/components/parameters/idParam" }
+        - { name: membershipId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                is_head: { type: boolean }
+                is_finance: { type: boolean }
+                is_manager: { type: boolean }
+      responses:
+        "200": { description: OK }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [Project]
+      summary: Remove a staff member from a department (#32b)
+      description: >
+        Soft delete — staff_dept.deleted_at is the person's leave time, and reimbursement
+        rows still reference this membership.
+      parameters:
+        - { $ref: "#/components/parameters/idParam" }
+        - { name: membershipId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "204": { description: No Content }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
 
   # ---------------------------------------------------------------- Sources (#33-36)
   /projects/{id}/sources:

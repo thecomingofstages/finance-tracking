@@ -300,6 +300,37 @@ For human collaborators, see the per-folder READMEs and `docs/`.
 
 <!-- Agent: append new durable findings below this line. -->
 
+### Backend fix pass (2026-09-06, `kkattmos/fix-backend`)
+
+- **`npm test` in `api/` is unit-only again** — `api/jest.config.js` now ignores `tests/e2e/`.
+  Without it the default run fired the deployed-stack suite at the live API and wrote rows to a
+  shared database. Deployed E2E stays behind `npm run test:e2e`.
+- **The unit suite under `api/tests/*.test.js` is pre-existing broken** (167 of 224 fail on a
+  clean `main` too — its mocks drifted from the code). Don't read a red `npm test` as a
+  regression; diff the failing test *names* against the baseline instead.
+- **`FLAG_CHECKS` has a helper-level twin.** Fixing `isGlobal` in `Auth.middleware.js` is only
+  half the job: `Staff.helper.js#managerProjectIds` gates `GET /staff` independently and needed
+  the same treatment. When you widen a route guard, grep for a second check inside the helper.
+- **`GET /staff` (#7) had never worked for anyone** — `findAndCountAll` + `limit` + a nested
+  required include makes Sequelize subquery the primary model and then emit the nested `where`
+  against the outer query ("missing FROM-clause entry for table memberships"). Fixed with
+  `subQuery: false`. It looked like an authorization bug only because the route 403'd everyone
+  before the query ran.
+- **`bankaccount.number` is `UNIQUE` across the whole table**, but the helper's duplicate check
+  is scoped to the caller's own accounts — so two staff registering the same number reached
+  Postgres. The error handler now maps `SequelizeUniqueConstraintError` to 409. Whether that
+  constraint should instead be `UNIQUE (staff_id, number)` is an open schema question.
+- **Cookie SameSite is derived, not hardcoded** (`app.conf.js` `isCrossSite`): `none` when the
+  frontend and API are on different registrable domains, `lax` otherwise, both overridable via
+  `COOKIE_SAMESITE` / `COOKIE_SECURE`. `logout` must clear with the same attributes or the
+  browser keeps the cookie.
+- **`api/Dockerfile` exists so Railway can render PDFs.** Nixpacks ships no Chromium, and Debian
+  slim ships no Thai font — without `fonts-thai-tlwg` every rendered document is tofu boxes.
+  The service must be pointed at the Dockerfile; `PUPPETEER_EXECUTABLE_PATH` selects the system
+  Chromium over puppeteer's own download.
+- **`signature_image` stores an R2 KEY, not a URL.** Readers presign on the way out via
+  `R2.resolveUrl` (`/auth/me`, documents). Never persist a presigned URL — it expires.
+
 ### Deployed-stack E2E (added 2026-09-02)
 
 - **Two E2E suites now exist, both pointed at the real deployment, both separate from the

@@ -184,5 +184,15 @@
     </div>
   </div>
 
+  <!-- Verification QR — dev plan: "At the bottom right, there should be QR code leading to
+       https://<BASE_URL>/reimburse/<id> for verification". It lives in the document body, not
+       only in the PDF footerTemplate, so that format=html carries it too. -->
+  <div class="verify-qr" style="margin-top:18px;display:flex;justify-content:flex-end;align-items:flex-end;gap:8px;">
+    <div style="font-size:10px;color:#666;text-align:right;line-height:1.4;">
+      เอกสารนี้จัดทำโดยระบบอัตโนมัติ<br>สแกนเพื่อตรวจสอบข้อมูล
+    </div>
+    <img src="{qr}" alt="verification QR" width="72" height="72" style="display:block;">
+  </div>
+
 </body>
 </html>

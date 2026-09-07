@@ -1214,11 +1214,136 @@ export interface paths {
             };
         };
         put?: never;
-        post?: never;
+        /**
+         * Assign a staff member to a department in this project (#31)
+         * @description Writes the staff_dept row that grants approval authority. is_head lets the member approve reimbursements for that department; is_finance lets them approve for the whole project and check payment slips; is_manager lets them manage the project and its people. Previously these flags were only settable by editing Postgres by hand, which left no way to appoint a department head after handover. department_id must belong to this project. 409 if the member is already in that department.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["idParam"];
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        staff_id: string;
+                        /** Format: uuid */
+                        department_id: string;
+                        /** @default false */
+                        is_head?: boolean;
+                        /** @default false */
+                        is_finance?: boolean;
+                        /** @default false */
+                        is_manager?: boolean;
+                    };
+                };
+            };
+            responses: {
+                /** @description Created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                400: components["responses"]["ValidationError"];
+                403: components["responses"]["Forbidden"];
+                /** @description Project, department or staff not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                409: components["responses"]["Conflict"];
+            };
+        };
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/projects/{id}/staff/{membershipId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove a staff member from a department (#32b)
+         * @description Soft delete — staff_dept.deleted_at is the person's leave time, and reimbursement rows still reference this membership.
+         */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["idParam"];
+                    membershipId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        options?: never;
+        head?: never;
+        /**
+         * Update a membership's approval flags (#32)
+         * @description Flags only. Moving someone to a different department is a delete plus a create, so that reimbursements already filed against the old staff_dept row keep meaning what they meant when they were filed.
+         */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["idParam"];
+                    membershipId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": {
+                        is_head?: boolean;
+                        is_finance?: boolean;
+                        is_manager?: boolean;
+                    };
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                400: components["responses"]["ValidationError"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+            };
+        };
         trace?: never;
     };
     "/projects/{id}/sources": {

@@ -74,6 +74,11 @@ function staffWithRelationsJSON(record, { includeBankAccounts = false } = {}) {
 }
 
 function managerProjectIds(scope = {}) {
+  // isGlobal (finance/owner/admin) manages every project, the same way the "*" wildcard does.
+  // Without this an administrator holding no staff_dept row is refused GET /staff outright,
+  // which is the helper-level twin of the FLAG_CHECKS gap in Auth.middleware.js — fixing only
+  // the route guard moved the 403 here instead of removing it.
+  if (scope.isGlobal) return ["*"];
   return scope.manager_of || scope.managerOf || [];
 }
 
@@ -134,6 +139,12 @@ class StaffHelper {
         },
       ],
       distinct: true,
+      // With a limit and a nested required include, Sequelize defaults to wrapping the primary
+      // model in a subquery — and then emits the `department` WHERE against the outer query,
+      // where the `memberships` join is not in scope ("missing FROM-clause entry for table
+      // memberships"). #7 therefore 500'd for every caller; nobody noticed because the route
+      // guard 403'd the only accounts that tried it before the query ever ran.
+      subQuery: false,
       order: [["first_name", "ASC"], ["last_name", "ASC"]],
       limit,
       offset: (page - 1) * limit,
@@ -371,13 +382,19 @@ class StaffHelper {
 
   /** #60 — POST /staff/me/signature. Already real, not mocked — genuinely uploads to R2 and
    *  returns a real presigned URL (see api/README.md, "R2 storage" is decoupled from
-   *  MOCK_MODE). Only the "$set staff.signature_image" write-back is still missing. */
+   *  MOCK_MODE). */
   static async uploadSignature(staffId, file) {
     if (!file) throw ApiError.validation("signature file is required.", "signature");
     const key = R2.buildKey("signatures", staffId, "png");
     await R2.upload("signatures", key, file.buffer, file.mimetype);
-    // TODO(mock): $set staff.signature_image = key on the real Staff row. The R2 upload
-    // itself above needs no changes when this goes real.
+
+    // Persist the KEY, not the presigned URL: the URL expires (r2.conf.js presignTtlSeconds)
+    // and this column outlives it. Readers presign on the way out via R2.resolveUrl.
+    const { Staff } = require("../models");
+    const staff = await Staff.findByPk(staffId);
+    if (!staff) throw ApiError.notFound("Staff not found.");
+    await staff.update({ signature_image: key });
+
     return { signature_image: await R2.presignedUrl("signatures", key) };
   }
 }

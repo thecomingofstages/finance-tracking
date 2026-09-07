@@ -1,14 +1,21 @@
 const asyncHandler = require("../utils/asyncHandler.util");
 const { ok, created, noContent } = require("../utils/Response.util");
 const Auth = require("../helpers/Auth.helper");
+const { app: appConf } = require("../config/init");
+
+/** SameSite/Secure come from config, not a literal — the frontend is cross-site in production
+ *  (Cloudflare Worker -> Railway) and same-site in local dev, and the correct attribute differs
+ *  between the two. See app.conf.js. `logout` must clear with the SAME attributes or the
+ *  browser keeps the cookie. */
+const refreshCookieOptions = () => ({
+  httpOnly: true,
+  secure: appConf.cookieSecure || appConf.cookieSameSite === "none",
+  sameSite: appConf.cookieSameSite,
+  path: "/",
+});
 
 const setRefreshCookie = (res, token) =>
-  res.cookie("refresh_token", token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "strict",
-    maxAge: 7 * 24 * 60 * 60 * 1000,
-  });
+  res.cookie("refresh_token", token, { ...refreshCookieOptions(), maxAge: 7 * 24 * 60 * 60 * 1000 });
 
 /** #57/#58 carry a Supabase Auth session token, not one of our own Bearer access tokens —
  *  verifyJWT (which expects OUR RS256 tokens) is deliberately not mounted on these two routes,
@@ -41,7 +48,8 @@ exports.loginViaSupabase = asyncHandler(async (req, res) => {
 });
 
 exports.logout = asyncHandler(async (req, res) => {
-  res.clearCookie("refresh_token");
+  // Same attributes as when it was set — a mismatched clearCookie is a no-op.
+  res.clearCookie("refresh_token", refreshCookieOptions());
   return noContent(res);
 });
 

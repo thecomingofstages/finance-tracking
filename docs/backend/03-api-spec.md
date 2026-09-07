@@ -161,8 +161,8 @@ both people end up touching nearly every domain, and the raw split lands at 30/2
 | 28  | `/departments/:id`             | PATCH      | manager                        | Planned | P1  | Project                                                                  | ชมพู่        |
 | 29  | `/departments/:id`             | DELETE     | manager                        | Planned | P2  | Project                                                                  | ชมพู่        |
 | 30  | `/projects/:id/staff`          | GET        | manager                        | Planned | P1  | Project                                                                  | มาร์ค        |
-| 31  | ~~`/projects/:id/staff`~~      | ~~POST~~   | —                              | **N/A** | —   | 🚫 manual — Finance inputs `staff_dept` rows directly in Supabase Studio | —            |
-| 32  | ~~`/staff-depts/:id`~~         | ~~DELETE~~ | —                              | **N/A** | —   | 🚫 manual, same reason                                                   | —            |
+| 31  | `/projects/:id/staff`          | POST       | manager                        | Done    | P0  | Project — assign staff to a department, with approval flags              | —            |
+| 32  | `/projects/:id/staff/:membershipId` | PATCH / DELETE | manager           | Done    | P0  | Project — change a membership's flags / soft-remove the member          | —            |
 | 33  | `/projects/:id/sources`        | GET        | finance                        | Planned | P0  | Sources                                                                  | มาร์ค        |
 | 34  | `/projects/:id/sources`        | POST       | finance                        | Planned | P0  | Sources                                                                  | ชมพู่        |
 | 35  | `/sources/:id`                 | PATCH      | finance                        | Planned | P1  | Sources                                                                  | ชมพู่        |
@@ -808,6 +808,12 @@ without guessing at permissions.
 - In practice this route is rarely reachable: a department with any history has memberships or
   reimbursements against it, and those block the delete. That's intentional — a department is a
   financial category, not just an org-chart node.
+
+> **Reversed 2026-09-06.** #31/#32 were originally scoped as N/A — "manual, Finance inputs
+> `staff_dept` rows directly in Supabase Studio". That does not survive handover: `is_head`,
+> `is_finance` and `is_manager` are what decide who may approve a reimbursement, so with no
+> write API the owner cannot appoint a department head without someone editing Postgres by
+> hand. They are implemented now, gated on the same `isManager` scope as the read.
 
 ### `GET /projects/:id/staff` — List Project Staff
 

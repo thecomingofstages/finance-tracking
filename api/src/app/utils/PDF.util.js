@@ -103,6 +103,7 @@ function buildRequestHtml(data) {
     bankAccountName: data.bank_account?.name || "",
     bankCheckbox: data.bank_account ? "✓" : "",
     cashCheckbox: data.bank_account ? "" : "✓",
+    qr: data.qr || "",
   });
 }
 
@@ -143,6 +144,7 @@ function buildVoucherHtml(data) {
     bankName: data.bank_account?.provider || "",
     bankAccountNumber: data.bank_account?.number || "",
     paymentDate: transferEntry ? toShortDate(transferEntry.created_at) : "",
+    qr: data.qr || "",
   });
 }
 
@@ -157,7 +159,28 @@ let browserPromise = null;
 function getBrowser() {
   if (!browserPromise) {
     const puppeteer = require("puppeteer");
-    browserPromise = puppeteer.launch({ headless: true });
+    browserPromise = puppeteer
+      .launch({
+        headless: true,
+        // --no-sandbox is required wherever the process cannot create a user namespace, which
+        // covers most container hosts (Railway included) — without it Chromium exits during
+        // launch and every PDF request 500s while format=html keeps working, which is exactly
+        // how this presented in production.
+        // --disable-dev-shm-usage stops Chromium using /dev/shm, which containers size at 64MB
+        // by default; an A4 render overruns it and the tab dies mid-page.
+        args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
+        // Set PUPPETEER_EXECUTABLE_PATH when the image ships its own Chromium rather than the
+        // copy puppeteer downloads at install time (see api/Dockerfile).
+        ...(process.env.PUPPETEER_EXECUTABLE_PATH
+          ? { executablePath: process.env.PUPPETEER_EXECUTABLE_PATH }
+          : {}),
+      })
+      .catch((err) => {
+        // Don't cache a rejected promise — otherwise one failed launch poisons every later
+        // request for the lifetime of the process.
+        browserPromise = null;
+        throw err;
+      });
   }
   return browserPromise;
 }
@@ -174,7 +197,11 @@ async function renderPdf(templateName, data) {
   const browser = await getBrowser();
   const page = await browser.newPage();
   try {
-    await page.setContent(html, { waitUntil: "networkidle0" });
+    // "load", not "networkidle0": the templates reference an externally hosted logo, and
+    // networkidle0 makes every render wait on that third-party fetch — slow at best, and a
+    // hang when egress to it is blocked. A timeout here surfaces as a 500 rather than a
+    // request that never returns.
+    await page.setContent(html, { waitUntil: "load", timeout: 20_000 });
     const pdf = await page.pdf({
       format: "A4",
       printBackground: true,
@@ -183,10 +210,9 @@ async function renderPdf(templateName, data) {
       footerTemplate: `
         <div style="width:100%;font-size:12px;font-family:'Sarabun','Tahoma',sans-serif;color:lightgrey;padding:0 18mm;display:flex;justify-content:space-between;align-items:flex-end;">
           <div>
-            <div style="margin-bottom:2px;">เอกสารนี้ถูกจัดทำขึ้นโดยระบบอัตโนมัติ กรุณาสแกน QR Code ด้านขวามือเพื่อตรวจสอบข้อมูล</div>
+            <div style="margin-bottom:2px;">เอกสารนี้ถูกจัดทำขึ้นโดยระบบอัตโนมัติ กรุณาสแกน QR Code ท้ายเอกสารเพื่อตรวจสอบข้อมูล</div>
             <div>Created at: ${esc(new Date().toISOString())}</div>
           </div>
-          <img src="${data.qr}" width="40" height="40" />
         </div>
       `,
       margin: { top: "15mm", bottom: "25mm", left: "18mm", right: "18mm" },

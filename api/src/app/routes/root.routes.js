@@ -17,15 +17,24 @@ function mountRoot(app) {
         name: "finance-tracking-api",
         version: require("../../../package.json").version,
         mockMode: appConf.mockMode,
-        docs: `${appConf.baseUrl}/api-docs`,
+        docs: docsExposed ? `${appConf.baseUrl}/api-docs` : null,
         health: `${appConf.baseUrl}/v1/health`,
       },
     });
   });
 
-  app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerDocument, { customSiteTitle: "TCOS Finance Tracking API" }));
-  // Raw spec, for tools that want the file itself (codegen, Postman import, etc.) rather than the UI.
-  app.get("/api-docs.json", (req, res) => res.json(swaggerDocument));
+  // The UI and the raw spec together enumerate every route, payload shape and error code to an
+  // unauthenticated caller. That is fine on a staging box and not fine on the instance holding
+  // real finance records, so it is off in production unless explicitly re-enabled.
+  const docsExposed = process.env.EXPOSE_API_DOCS
+    ? process.env.EXPOSE_API_DOCS === "true"
+    : appConf.env !== "production";
+
+  if (docsExposed) {
+    app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerDocument, { customSiteTitle: "TCOS Finance Tracking API" }));
+    // Raw spec, for tools that want the file itself (codegen, Postman import, etc.) rather than the UI.
+    app.get("/api-docs.json", (req, res) => res.json(swaggerDocument));
+  }
 }
 
 module.exports = { mountRoot };
