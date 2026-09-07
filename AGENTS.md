@@ -300,6 +300,16 @@ For human collaborators, see the per-folder READMEs and `docs/`.
 
 <!-- Agent: append new durable findings below this line. -->
 
+- **`reimbursement_updatestatus.reason` exists now** (migration
+  `20260907000000_add_reimbursement_status_reason.sql`). Before it, `reason` was required by
+  swagger, the zod schema and `Approval.helper.js` TRANSITIONS on every `-> rejected`
+  transition, and then thrown away — the table had no column. It is written only for
+  rejections; approving transitions store NULL on purpose. **The migration must be applied to
+  the hosted Supabase separately** — nothing in the deploy runs migrations.
+- **Before trusting that an API field is stored, check for a column.** `note` (no such field
+  anywhere) and `reason` (in the contract, no column) were both accepted and silently dropped.
+  Worth a sweep of the rest of the contract.
+
 ### Reimbursement approval pass (2026-09-07, `kkattmos/fix-reimburse-approval`)
 
 - **`POST /reimbursements/:id/status` takes `status`, `tracking_id`, `reason` — there is no

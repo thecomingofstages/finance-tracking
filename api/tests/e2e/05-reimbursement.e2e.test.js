@@ -381,6 +381,28 @@ describe("#47 rejection path", () => {
     expect(res.data.latest_status ?? res.data.reimbursement?.latest_status).toBe("rejected");
   });
 
+  test("the rejection reason is persisted, not just validated", async () => {
+    // `reason` was required by the contract long before it had anywhere to live:
+    // reimbursement_updatestatus had no column, so the API validated the value and then
+    // dropped it, and a requester could see THAT they were rejected but never why.
+    const res = await api.get(`/reimbursements/${id}`, { token: head.token });
+    expect(res.status).toBe(200);
+    const history = res.data.history ?? res.data.statuses ?? res.data.updates;
+    const rejection = [...history].reverse().find((h) => h.status === "rejected");
+    expect(rejection).toBeDefined();
+    expect(rejection.reason).toBe("ใบเสร็จไม่ครบ");
+  });
+
+  test("approving transitions carry no reason", async () => {
+    // The column is only meaningful on a rejection — explanatory text sitting on an approval
+    // row would be rendered nowhere and read as data corruption by anyone auditing the log.
+    const res = await api.get(`/reimbursements/${id}`, { token: head.token });
+    const history = res.data.history ?? res.data.statuses ?? res.data.updates;
+    history
+      .filter((h) => h.status !== "rejected")
+      .forEach((entry) => expect(entry.reason ?? null).toBeNull());
+  });
+
   test("a rejected reimbursement is editable again", async () => {
     const res = await api.patch(`/reimbursements/${id}`, { token: head.token, body: { purpose: `${PREFIX} corrected` } });
     expect(res.status).toBe(200);

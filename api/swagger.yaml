@@ -231,6 +231,14 @@ components:
       properties:
         status: { $ref: "#/components/schemas/ReimbursementStatusValue" }
         staff: { type: object, nullable: true, properties: { nickname: { type: string } } }
+        reason:
+          type: string
+          nullable: true
+          description: >
+            Why this transition was made. Set only on a transition to 'rejected', where the API
+            requires it; null for every other status. Persisted since
+            supabase/migrations/20260907000000_add_reimbursement_status_reason.sql — before that
+            the value was required, validated, and then discarded.
         created_at: { type: string, format: date-time }
 
   responses:

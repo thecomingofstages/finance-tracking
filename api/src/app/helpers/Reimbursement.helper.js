@@ -453,11 +453,10 @@ class ReimbursementHelper {
    *  Payment.helper.js's #40), and on fin_approve->transfer rolls the total up to
    *  department/project/tag explicitly (doc 02 §6 gap #1 — no trigger does this yet).
    *
-   *  Real gap surfaced here: `reason` (required on any ->rejected transition per doc 03/04) has
-   *  nowhere to persist — `reimbursement_updatestatus` in the shipped schema has no `reason`
-   *  column at all (unlike the doc's description of it). Still validated/required at the API
-   *  layer since the contract promises it, but the value doesn't survive past this request —
-   *  needs a schema migration (ALTER TABLE ... ADD COLUMN reason TEXT) to actually close. */
+   *  `reason` (required on any ->rejected transition per doc 03/04) is persisted on the status
+   *  row and comes back in the history, so a requester can see why they were rejected. It used
+   *  to be validated and then discarded — reimbursement_updatestatus had no column for it until
+   *  supabase/migrations/20260907000000_add_reimbursement_status_reason.sql. */
   static async changeStatus(reimbursementId, { status, tracking_id, reason }, { staffId, role }) {
     const { Reimbursement, ReimbursementDetail, ReimbursementStatus, StaffDept, Department, Project, ProjectTag, sequelize } =
       require("../models");
@@ -488,7 +487,12 @@ class ReimbursementHelper {
     ApprovalHelper.assertAuthorized(edge, { isHead, isFinance, isOwner, isRequester });
 
     await sequelize.transaction(async (t) => {
-      await ReimbursementStatus.create({ reimbursement_id: reimbursementId, status, staff_id: staffId }, { transaction: t });
+      // `reason` is only meaningful on a rejection; storing whatever was passed alongside an
+      // approval would put explanatory text on a row nothing renders it for.
+      await ReimbursementStatus.create(
+        { reimbursement_id: reimbursementId, status, staff_id: staffId, reason: status === "rejected" ? reason : null },
+        { transaction: t }
+      );
       if (status === "fin_approve") {
         reimbursement.tracking_id = tracking_id;
         await reimbursement.save({ transaction: t });

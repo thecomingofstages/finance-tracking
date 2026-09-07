@@ -15,6 +15,8 @@ class ReimbursementStatus extends Model {
         reimbursement_id: { type: DataTypes.UUID, allowNull: false },
         status: { type: DataTypes.ENUM(...REIMBURSEMENT_STATUSES), allowNull: false }, // no default — always explicit
         staff_id: { type: DataTypes.UUID, allowNull: false },
+        // Required by the API for any -> rejected, NULL for every other transition.
+        reason: { type: DataTypes.TEXT, allowNull: true },
       },
       {
         sequelize,

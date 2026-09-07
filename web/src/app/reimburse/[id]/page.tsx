@@ -256,6 +256,10 @@ export default function ReimbursementDetailPage() {
 
   // Timeline Timestamps
   const createdDateStr = formatDateTH(record.created_at || record.createdAt);
+  // Most recent rejection wins: a request can be rejected, edited, resubmitted and rejected
+  // again, and the reason that matters is the one attached to the current status.
+  const rejectionReason =
+    [...history].reverse().find((h) => h.status === "rejected")?.reason || null;
   const reviewEntry = history.find((h) => h.status === "head_approve" || h.status === "fin_approve");
   const reviewDateStr = reviewEntry ? formatDateTH(reviewEntry.created_at) : null;
   const approvedEntry = history.find((h) => h.status === "transfer" || h.status === "completed");
@@ -569,9 +573,19 @@ export default function ReimbursementDetailPage() {
                   <p className="text-xs text-emerald-600">รายการนี้ได้รับการอนุมัติและโอนเงินเข้าบัญชีพนักงานแล้ว</p>
                 </div>
               ) : latestStatus === "rejected" ? (
-                <div className="p-4 bg-rose-50 border border-rose-200 rounded-xl text-center space-y-1">
-                  <span className="text-rose-700 font-bold text-sm block">✕ คำขอนี้ถูกปฏิเสธ</span>
-                  <p className="text-xs text-rose-600">โปรดตรวจสอบข้อความหมายเหตุหรือติดต่อฝ่ายการเงิน</p>
+                <div className="p-4 bg-rose-50 border border-rose-200 rounded-xl space-y-2">
+                  <span className="text-rose-700 font-bold text-sm block text-center">✕ คำขอนี้ถูกปฏิเสธ</span>
+                  {/* The reason the approver typed. Until it had a column to live in, this
+                      panel told people to "check the note" — a note the API had already
+                      discarded, so there was nothing to check. */}
+                  {rejectionReason ? (
+                    <div className="bg-white/70 border border-rose-200 rounded-lg px-3 py-2">
+                      <p className="text-[11px] font-semibold text-rose-700 uppercase tracking-wider mb-0.5">เหตุผลในการปฏิเสธ</p>
+                      <p className="text-xs text-rose-800 whitespace-pre-wrap break-words">{rejectionReason}</p>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-rose-600 text-center">ไม่ได้ระบุเหตุผลไว้ — กรุณาติดต่อฝ่ายการเงิน</p>
+                  )}
                 </div>
               ) : (
                 <div className="p-4 bg-slate-50 border border-slate-100 rounded-xl text-center text-xs text-slate-500">

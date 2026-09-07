@@ -35,6 +35,11 @@ PostgreSQL 15 (Supabase). **This document now describes the schema as actually s
   `project.total_income`/`total_expense`, `department.total_expense` are all real columns with no
   code path that ever updates them. This is the most consequential gap — see §6.
 
+> **Added 2026-09-07.** `reimbursement_updatestatus.reason TEXT NULL` — see
+> `supabase/migrations/20260907000000_add_reimbursement_status_reason.sql`. The API had
+> required `reason` on every `-> rejected` transition since the contract was written, but
+> the table had no column for it, so the value was validated and then discarded.
+
 ## ER diagram
 
 Reflects the actual column set, types, and nullability in the shipped migration.

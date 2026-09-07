@@ -2528,6 +2528,8 @@ export interface components {
             staff?: {
                 nickname?: string;
             } | null;
+            /** @description Why this transition was made. Set only on a transition to 'rejected', where the API requires it; null for every other status. Persisted since supabase/migrations/20260907000000_add_reimbursement_status_reason.sql — before that the value was required, validated, and then discarded. */
+            reason?: string | null;
             /** Format: date-time */
             created_at?: string;
         };
