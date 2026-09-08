@@ -270,6 +270,92 @@ describe("#47 the approval chain end to end", () => {
   });
 });
 
+describe("#47 the fields the status endpoint actually accepts", () => {
+  let id;
+  beforeAll(async () => {
+    const res = await api.post("/reimbursements", {
+      token: head.token,
+      body: { department_id: DEPT_CHOMPOO_HEADS, purpose: `${PREFIX} field contract`, details: [{ title: "x", amount: 700 }] },
+    });
+    id = res.data._id;
+  });
+
+  test("head approval takes nothing beyond the step-up token", async () => {
+    // The request lands in head_approve already (requester heads the department), so this
+    // asserts the shape of the edge rather than re-walking it: no tracking_id, no reason.
+    const detail = await api.get(`/reimbursements/${id}`, { token: head.token });
+    expect(detail.data.latest_status).toBe("head_approve");
+  });
+
+  test("tracking_id is stored verbatim, not wrapped in prose", async () => {
+    // The web client used to send a `note` field the API does not have, and packed the
+    // tracking id inside it as "[Tracking: X] …". tracking_id is what Finance reconciles
+    // against their own ledger, so anything but the exact string they typed is corruption.
+    const reauth = await stepUp(head.token, SEED_PASSWORD);
+    const tracking = `${PREFIX}-VERBATIM-01`;
+    const res = await api.post(`/reimbursements/${id}/status`, {
+      token: head.token, reauth, body: { status: "fin_approve", tracking_id: tracking },
+    });
+    expect(res.status).toBe(200);
+
+    const detail = await api.get(`/reimbursements/${id}`, { token: head.token });
+    expect(detail.data.tracking_id).toBe(tracking);
+  });
+
+  test("an unknown field is not accepted in place of tracking_id", async () => {
+    const fresh = await api.post("/reimbursements", {
+      token: head.token,
+      body: { department_id: DEPT_CHOMPOO_HEADS, purpose: `${PREFIX} note rejected`, details: [{ title: "x", amount: 300 }] },
+    });
+    const reauth = await stepUp(head.token, SEED_PASSWORD);
+    const res = await api.post(`/reimbursements/${fresh.data._id}/status`, {
+      token: head.token, reauth, body: { status: "fin_approve", note: "TCOS-0001" },
+    });
+    // Whether it 400s on the missing tracking_id or 400s on the unknown key, what must never
+    // happen is a 200 that leaves tracking_id empty.
+    expect(res.status).toBe(400);
+  });
+});
+
+describe("#4 /auth/me publishes the contract the UI is built against", () => {
+  test("scope is snake_case, matching swagger's Scope schema", async () => {
+    // The API used to emit headOf/isHead while swagger declared head_of/is_head, so every
+    // membership check in the frontend silently evaluated to undefined and a department head
+    // was never shown the approve button.
+    const res = await api.get("/auth/me", { token: head.token });
+    expect(res.status).toBe(200);
+    const scope = res.data.scope;
+    expect(Array.isArray(scope.head_of)).toBe(true);
+    expect(Array.isArray(scope.finance_of)).toBe(true);
+    expect(Array.isArray(scope.manager_of)).toBe(true);
+    expect(scope.headOf).toBeUndefined();
+    expect(scope.financeOf).toBeUndefined();
+  });
+
+  test("memberships carry snake_case flags and the department they belong to", async () => {
+    const res = await api.get("/auth/me", { token: head.token });
+    const membership = res.data.scope.memberships[0];
+    expect(membership).toMatchObject({
+      department_id: expect.any(String),
+      project_id: expect.any(String),
+      is_head: expect.any(Boolean),
+      is_finance: expect.any(Boolean),
+      is_manager: expect.any(Boolean),
+    });
+  });
+
+  test("the head of a department is discoverable from their own scope", async () => {
+    // What the approve button is gated on: "am I head of THIS reimbursement's department".
+    const res = await api.get("/auth/me", { token: head.token });
+    expect(res.data.scope.head_of).toContain(DEPT_CHOMPOO_HEADS);
+  });
+
+  test("the signature policy is published, not guessed", async () => {
+    const res = await api.get("/auth/me", { token: head.token });
+    expect(typeof res.data.features.require_signature).toBe("boolean");
+  });
+});
+
 describe("#47 rejection path", () => {
   let id;
   beforeAll(async () => {
@@ -293,6 +379,28 @@ describe("#47 rejection path", () => {
     });
     expect(res.status).toBe(200);
     expect(res.data.latest_status ?? res.data.reimbursement?.latest_status).toBe("rejected");
+  });
+
+  test("the rejection reason is persisted, not just validated", async () => {
+    // `reason` was required by the contract long before it had anywhere to live:
+    // reimbursement_updatestatus had no column, so the API validated the value and then
+    // dropped it, and a requester could see THAT they were rejected but never why.
+    const res = await api.get(`/reimbursements/${id}`, { token: head.token });
+    expect(res.status).toBe(200);
+    const history = res.data.history ?? res.data.statuses ?? res.data.updates;
+    const rejection = [...history].reverse().find((h) => h.status === "rejected");
+    expect(rejection).toBeDefined();
+    expect(rejection.reason).toBe("ใบเสร็จไม่ครบ");
+  });
+
+  test("approving transitions carry no reason", async () => {
+    // The column is only meaningful on a rejection — explanatory text sitting on an approval
+    // row would be rendered nowhere and read as data corruption by anyone auditing the log.
+    const res = await api.get(`/reimbursements/${id}`, { token: head.token });
+    const history = res.data.history ?? res.data.statuses ?? res.data.updates;
+    history
+      .filter((h) => h.status !== "rejected")
+      .forEach((entry) => expect(entry.reason ?? null).toBeNull());
   });
 
   test("a rejected reimbursement is editable again", async () => {

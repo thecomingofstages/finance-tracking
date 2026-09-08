@@ -231,6 +231,14 @@ components:
       properties:
         status: { $ref: "#/components/schemas/ReimbursementStatusValue" }
         staff: { type: object, nullable: true, properties: { nickname: { type: string } } }
+        reason:
+          type: string
+          nullable: true
+          description: >
+            Why this transition was made. Set only on a transition to 'rejected', where the API
+            requires it; null for every other status. Persisted since
+            supabase/migrations/20260907000000_add_reimbursement_status_reason.sql — before that
+            the value was required, validated, and then discarded.
         created_at: { type: string, format: date-time }
 
   responses:
@@ -372,7 +380,26 @@ paths:
                         allOf:
                           - $ref: "#/components/schemas/Staff"
                           - type: object
-                            properties: { scope: { $ref: "#/components/schemas/Scope" } }
+                            properties:
+                              scope: { $ref: "#/components/schemas/Scope" }
+                              features:
+                                type: object
+                                description: >
+                                  Server-side policy the UI must honour rather than hardcode its
+                                  own copy of.
+                                properties:
+                                  require_signature:
+                                    type: boolean
+                                    description: >
+                                      Whether an approver must have a stored digital signature
+                                      before acting on a reimbursement. Set REQUIRE_SIGNATURE=false
+                                      to suspend the requirement while document rendering is
+                                      unavailable — the signature is only consumed by the rendered
+                                      ใบเบิกเงิน / ใบสำคัญจ่าย, so until those render it collects an
+                                      image nothing reads while blocking every approval. This is
+                                      advisory: the API does not itself reject an unsigned approval
+                                      (it never did), and turning it off does not relax the step-up
+                                      password check, which is a separate control.
         "401": { $ref: "#/components/responses/Unauthorized" }
 
   # ---------------------------------------------------------------- Staff (#7-16, 60)

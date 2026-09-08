@@ -7,6 +7,12 @@ const { login, stepUp, admin, PREFIX, email, RUN_ID } = require("./helpers/conte
 
 const SEED_PASSWORD = "Passw0rd!2026";
 
+/** A 12-digit number that will not collide with another run, another developer's run, or a
+ *  real account. Exactly 12 digits because the column is VARCHAR(12) and the API validates
+ *  10-12. */
+const randomAccountNumber = () =>
+  Array.from({ length: 12 }, () => Math.floor(Math.random() * 10)).join("");
+
 let adminSession;
 let staffSession;
 let provisioned; // { _id, email } created by this run
@@ -87,9 +93,10 @@ describe("#14-#16 bank accounts", () => {
   test("a valid account is created", async () => {
     const res = await api.post("/staff/me/bank-accounts", {
       token: staffSession.token,
-      // Unique per run: bank account numbers are unique per staff member and immutable once
-      // created, so a fixed number makes the second run of this suite a 409.
-      body: { name: `${PREFIX} Account`, number: `9${RUN_ID}`.slice(0, 12), provider: "กสิกรไทย" },
+      // bankaccount.number is UNIQUE across the whole table, and the column is VARCHAR(12).
+      // A run-id prefix is NOT enough: RUN_ID is YYYYMMDDHHMMSS, and truncating to 12 digits
+      // cuts the seconds off, so two runs in the same minute collide. Random digits instead.
+      body: { name: `${PREFIX} Account`, number: randomAccountNumber(), provider: "กสิกรไทย" },
     });
     expect(res.status).toBe(201);
     accountId = res.data._id;

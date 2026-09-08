@@ -62,6 +62,7 @@ async function resolveScope(req, res, next) {
     const memberships = rows.map((r) => ({
       staffDeptId: r._id,
       departmentId: r.department_id,
+      departmentName: r.department.name,
       projectId: r.department.project_id,
       isHead: r.is_head,
       isFinance: r.is_finance,
@@ -81,6 +82,44 @@ async function resolveScope(req, res, next) {
   } catch (err) {
     return next(err);
   }
+}
+
+/**
+ * Serialize req.scope for the wire.
+ *
+ * `req.scope` is camelCase because that is what this file and the helpers read, but
+ * swagger.yaml has always declared the Scope schema in snake_case (`head_of`, `is_head`, …)
+ * and the whole frontend was written against that. The API was emitting camelCase, so every
+ * membership check in the UI silently evaluated to undefined — a department head was never
+ * shown the approve button, and role-based fallbacks masked it everywhere else.
+ *
+ * Converting here, rather than renaming req.scope, keeps the internal shape (and every
+ * FLAG_CHECKS reader) untouched while making the published contract true.
+ *
+ * `project_name` is in the schema but not populated: resolveScope joins Department, not
+ * Project, and adding a second join to every authenticated request is not worth a label the
+ * UI does not currently read.
+ */
+function toPublicScope(scope) {
+  if (!scope) return scope;
+  return {
+    staff_id: scope.staffId,
+    role: scope.role,
+    is_global: scope.isGlobal,
+    memberships: (scope.memberships || []).map((m) => ({
+      staff_dept_id: m.staffDeptId,
+      department_id: m.departmentId,
+      department_name: m.departmentName ?? null,
+      project_id: m.projectId,
+      is_head: Boolean(m.isHead),
+      is_finance: Boolean(m.isFinance),
+      is_manager: Boolean(m.isManager),
+    })),
+    departments: scope.departments || [],
+    head_of: scope.headOf || [],
+    finance_of: scope.financeOf || [],
+    manager_of: scope.managerOf || [],
+  };
 }
 
 function scopeIncludes(list, targetId) {
@@ -178,4 +217,11 @@ function requireReauth(req, res, next) {
   }
 }
 
-module.exports = { verifyJWT, resolveScope, requireScope, requireRole, requireReauth };
+module.exports = {
+  toPublicScope,
+  verifyJWT,
+  resolveScope,
+  requireScope,
+  requireRole,
+  requireReauth,
+};

@@ -25,7 +25,6 @@ export const ReimbursementActionModal: React.FC<ReimbursementActionModalProps> =
   const [password, setPassword] = useState<string>("");
   const [showPassword, setShowPassword] = useState<boolean>(false);
   const [trackingId, setTrackingId] = useState<string>("");
-  const [note, setNote] = useState<string>("");
   
   // Signature File state
   const [signatureFile, setSignatureFile] = useState<File | null>(null);
@@ -37,9 +36,12 @@ export const ReimbursementActionModal: React.FC<ReimbursementActionModalProps> =
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Does the user need to upload a signature?
-  // Usually needed for head_approve and fin_approve, maybe transfer too.
-  const needsSignature = !user?.signature_image;
+  // The signature is only consumed by the rendered ใบเบิกเงิน / ใบสำคัญจ่าย, so the API
+  // publishes whether it is currently required (REQUIRE_SIGNATURE) rather than the UI holding
+  // its own opinion. When it is off, approvals proceed on the step-up password alone and the
+  // upload box is simply not shown — nothing about the password check changes.
+  const signatureRequired = user?.features?.require_signature !== false;
+  const needsSignature = signatureRequired && !user?.signature_image;
   const requiresTrackingId = action === "fin_approve";
 
   useEffect(() => {
@@ -47,7 +49,6 @@ export const ReimbursementActionModal: React.FC<ReimbursementActionModalProps> =
       setPassword("");
       setShowPassword(false);
       setTrackingId("");
-      setNote("");
       setSignatureFile(null);
       if (signaturePreviewUrl) {
         URL.revokeObjectURL(signaturePreviewUrl);
@@ -155,10 +156,12 @@ export const ReimbursementActionModal: React.FC<ReimbursementActionModalProps> =
       }
 
       // Step 3: Approve / Transfer
+      // Only `tracking_id` and `reason` exist on this endpoint. head_approve and transfer take
+      // neither — the step-up password is the whole confirmation.
       const res = await updateReimbursementStatusApi(
         reimbursementId,
         action,
-        note ? (requiresTrackingId ? `[Tracking: ${trackingId}] ${note}` : note) : (requiresTrackingId ? trackingId : undefined),
+        requiresTrackingId ? { tracking_id: trackingId.trim() } : {},
         reauthToken
       );
 
@@ -247,20 +250,6 @@ export const ReimbursementActionModal: React.FC<ReimbursementActionModalProps> =
               />
             </div>
           )}
-
-          {/* Remark / Note Field */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1">
-              หมายเหตุ / ข้อความบันทึก (Remark / Note) <span className="text-[11px] text-slate-400 font-normal">(ไม่บังคับ)</span>
-            </label>
-            <textarea
-              rows={2}
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              placeholder="ระบุข้อความหรือบันทึกเพิ่มเติมสำหรับการดำเนินการนี้..."
-              className="w-full px-3 py-2 text-xs sm:text-sm bg-white text-slate-900 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-900 focus:border-transparent outline-none transition-all placeholder:text-slate-400"
-            />
-          </div>
 
           {needsSignature && (
             <div className="bg-orange-50/50 border border-orange-200 p-4 rounded-xl">

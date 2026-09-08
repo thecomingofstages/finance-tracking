@@ -1,0 +1,91 @@
+name: CI
+
+# Runs on every PR and on pushes to main. Deliberately does NOT deploy — Cloudflare and
+# Railway own that, triggered by their own integrations.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  api:
+    name: api — contract & load
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: api/package-lock.json
+      - run: npm ci
+
+      # Cheapest real signal: every module has to parse and its imports resolve. Catches the
+      # class of mistake that only shows up when a route is first hit in production.
+      - name: Every module loads
+        run: node -e "require('./src/app/routes/init.js'); require('./src/app/models'); console.log('modules load OK')"
+
+      - name: swagger.yaml is valid
+        run: node -e "const y=require('js-yaml'),f=require('fs');const d=y.load(f.readFileSync('swagger.yaml','utf8'));if(!d.paths||!Object.keys(d.paths).length)throw new Error('no paths');console.log('swagger OK —',Object.keys(d.paths).length,'paths')"
+
+      # AGENTS.md says swagger.yaml is the running contract and that web/src/lib/api/types.gen.ts
+      # must be regenerated after every change to it — but nothing enforced that, so the two
+      # could drift silently. Regenerate and fail if the result differs from what was committed.
+      - name: Generated FE client matches swagger.yaml
+        run: |
+          cp ../web/src/lib/api/types.gen.ts /tmp/types.committed.ts
+          npm run gen:client
+          if ! diff -u /tmp/types.committed.ts ../web/src/lib/api/types.gen.ts; then
+            echo "::error::web/src/lib/api/types.gen.ts is out of date. Run 'npm run gen:client' in api/ and commit the result."
+            exit 1
+          fi
+          echo "generated client is in sync"
+
+      # NOT RUN HERE, on purpose:
+      #   npm test          — the unit suite under api/tests/*.test.js is pre-existing broken
+      #                       (167 of 224 fail on a clean main; its mocks drifted from the code).
+      #                       Turning it on would make CI permanently red and train people to
+      #                       ignore it. Fix the suite, then add it here.
+      #   npm run test:e2e  — talks to a deployed API and a real database, and writes rows.
+      #                       Needs secrets and a disposable environment; not a PR gate.
+
+  web:
+    name: web — typecheck & Cloudflare build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      # NOT RUN HERE, on purpose:
+      #   npm run lint — broken repo-wide. The script is `next lint`, which Next 16 removed, so
+      #                  it fails with "Invalid project directory: .../web/lint". ESLint itself
+      #                  is no better: there is no eslint.config.js and a bare `npx eslint .`
+      #                  crashes inside @eslint/eslintrc. Restoring linting means migrating to
+      #                  flat config for Next 16 + React 19 — worth doing, separately.
+
+      # The real deployability check: this is the same command Cloudflare Workers Builds runs.
+      # NEXT_PUBLIC_* are inlined at build time, so they must be present — the values are
+      # placeholders because nothing here talks to a real backend, we only care that it builds.
+      - name: Cloudflare Workers build
+        env:
+          NEXT_PUBLIC_API_URL: https://example.invalid/v1
+          NEXT_PUBLIC_SUPABASE_URL: https://example.invalid
+        run: npx @opennextjs/cloudflare build

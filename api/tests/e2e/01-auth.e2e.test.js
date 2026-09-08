@@ -37,10 +37,13 @@ describe("#4 /auth/me", () => {
     const res = await api.get("/auth/me", { token: session.token });
     expect(res.status).toBe(200);
     expect(res.data._id).toBe(session.staff._id);
+    // snake_case, matching swagger's Scope schema and what the frontend reads. This assertion
+    // previously encoded the API's camelCase output instead of the published contract, which
+    // is how the mismatch survived a green suite.
     expect(res.data.scope).toMatchObject({
-      staffId: expect.any(String),
+      staff_id: expect.any(String),
       role: expect.any(String),
-      isGlobal: expect.any(Boolean),
+      is_global: expect.any(Boolean),
     });
   });
 

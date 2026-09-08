@@ -122,7 +122,15 @@ class AuthHelper {
     const safe = staff.toSafeJSON();
     // signature_image is stored as an R2 key; callers need something loadable.
     safe.signature_image = await R2.resolveUrl("signatures", safe.signature_image);
-    return { ...safe, scope };
+    // Surfaced so the UI can read the policy instead of hardcoding its own copy of it — the
+    // approval modal has to know whether to demand a signature before it will submit.
+    // Serialized to the snake_case shape swagger declares — see toPublicScope for why.
+    const { toPublicScope } = require("../middleware/Auth.middleware");
+    return {
+      ...safe,
+      scope: toPublicScope(scope),
+      features: { require_signature: appConf.requireSignature },
+    };
   }
 
   /** #5 — POST /auth/password/forgot. Always the same response regardless of whether the

@@ -42,9 +42,14 @@ export default function ReimbursementDetailPage() {
     setIsFetching(true);
     try {
       const res = await getReimbursementDetailApi(id);
-      if (res.data) {
-        setRecord((res.data as any).record || res.data);
-        setHistory((res.data as any).history || []);
+      // openapi-fetch hands back the parsed body, which is the API's envelope
+      // `{ success, data }` — not the reimbursement itself. Unwrapping was missing, so every
+      // field read off `record` was undefined: latestStatus fell through to its "waiting"
+      // default, and department_id (which the approve gating depends on) was never seen.
+      const payload = (res.data as any)?.data ?? res.data;
+      if (payload) {
+        setRecord((payload as any).record || payload);
+        setHistory((payload as any).history || []);
       } else {
         // Fallback realistic mock data if backend not populated
         setRecord({
@@ -120,9 +125,15 @@ export default function ReimbursementDetailPage() {
     Boolean(user?.scope?.finance_of && user.scope.finance_of.length > 0) ||
     Boolean(user?.scope?.memberships?.some((m) => m.is_finance));
 
-  const isHeadOfDept =
-    Boolean(user?.scope?.head_of && user.scope.head_of.length > 0) ||
-    Boolean(user?.scope?.memberships?.some((m) => m.is_head));
+  // Head of THIS reimbursement's department, not of any department. `waiting -> head_approve`
+  // is checked server-side against a staff_dept row for this exact department, so a broader
+  // test here just produces a button that comes back 403 — which is what used to happen to
+  // anyone who headed some other department.
+  const recordDepartmentId = record?.department_id;
+  const isHeadOfThisDept =
+    Boolean(recordDepartmentId) &&
+    (Boolean(user?.scope?.head_of?.includes(recordDepartmentId)) ||
+      Boolean(user?.scope?.memberships?.some((m) => m.is_head && m.department_id === recordDepartmentId)));
 
   const isRequester = useMemo(() => {
     if (!user || !record) return true;
@@ -140,9 +151,14 @@ export default function ReimbursementDetailPage() {
   const canEdit = isRequester && ["waiting", "rejected"].includes(latestStatus);
 
   // Action Rights
-  const canHeadApprove = latestStatus === "waiting" && (isHeadOfDept || isFinanceOrAdmin);
+  // Each of these mirrors one edge of Approval.helper.js's TRANSITIONS table. Where the UI is
+  // looser than the server, the user gets a button that 403s; where it is stricter, they lose
+  // an action they are entitled to. Keep them in step.
+  const canHeadApprove = latestStatus === "waiting" && isHeadOfThisDept;
   const canFinApprove = latestStatus === "head_approve" && isFinanceOrAdmin;
-  const canTransfer = latestStatus === "fin_approve" && isFinanceOrAdmin;
+  // fin_approve -> transfer requires isOwner, which is a plain role check server-side —
+  // finance staff are NOT owners and were previously shown a transfer button that always failed.
+  const canTransfer = latestStatus === "fin_approve" && (userRole === "owner" || userRole === "admin");
 
   const handleEditSave = async ({
     purpose,
@@ -240,6 +256,10 @@ export default function ReimbursementDetailPage() {
 
   // Timeline Timestamps
   const createdDateStr = formatDateTH(record.created_at || record.createdAt);
+  // Most recent rejection wins: a request can be rejected, edited, resubmitted and rejected
+  // again, and the reason that matters is the one attached to the current status.
+  const rejectionReason =
+    [...history].reverse().find((h) => h.status === "rejected")?.reason || null;
   const reviewEntry = history.find((h) => h.status === "head_approve" || h.status === "fin_approve");
   const reviewDateStr = reviewEntry ? formatDateTH(reviewEntry.created_at) : null;
   const approvedEntry = history.find((h) => h.status === "transfer" || h.status === "completed");
@@ -521,22 +541,14 @@ export default function ReimbursementDetailPage() {
                 </div>
               ) : canFinApprove || canHeadApprove ? (
                 <div className="space-y-4">
-                  {canFinApprove && (
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-700 mb-1">
-                        รหัสรายการ (Tracking ID / Voucher Code) <span className="text-red-500">*</span>
-                      </label>
-                      <input
-                        type="text"
-                        defaultValue={trackingId}
-                        placeholder="เช่น REIM-2026-001"
-                        className="w-full px-3 py-2 text-xs font-mono bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-900 outline-none transition-all"
-                      />
-                    </div>
-                  )}
+                  {/* The tracking id is collected in the confirmation modal, which is what
+                      actually submits it. An input here as well was uncontrolled
+                      (defaultValue, no onChange) so it captured nothing and sent nothing —
+                      two boxes asking for one value, one of them decorative. */}
 
                   <p className="text-xs text-slate-500 leading-relaxed">
-                    กรุณาตรวจสอบความถูกต้องของรายการและเอกสารหลักฐาน เมื่อกดอนุมัติจะต้องยืนยันตัวตนด้วยรหัสผ่านและลงลายเซ็นต์ดิจิทัล
+                    กรุณาตรวจสอบความถูกต้องของรายการและเอกสารหลักฐาน เมื่อกดอนุมัติจะต้องยืนยันตัวตนด้วยรหัสผ่าน
+                    {user?.features?.require_signature !== false ? "และลงลายเซ็นต์ดิจิทัล" : ""}
                   </p>
 
                   <button
@@ -561,9 +573,19 @@ export default function ReimbursementDetailPage() {
                   <p className="text-xs text-emerald-600">รายการนี้ได้รับการอนุมัติและโอนเงินเข้าบัญชีพนักงานแล้ว</p>
                 </div>
               ) : latestStatus === "rejected" ? (
-                <div className="p-4 bg-rose-50 border border-rose-200 rounded-xl text-center space-y-1">
-                  <span className="text-rose-700 font-bold text-sm block">✕ คำขอนี้ถูกปฏิเสธ</span>
-                  <p className="text-xs text-rose-600">โปรดตรวจสอบข้อความหมายเหตุหรือติดต่อฝ่ายการเงิน</p>
+                <div className="p-4 bg-rose-50 border border-rose-200 rounded-xl space-y-2">
+                  <span className="text-rose-700 font-bold text-sm block text-center">✕ คำขอนี้ถูกปฏิเสธ</span>
+                  {/* The reason the approver typed. Until it had a column to live in, this
+                      panel told people to "check the note" — a note the API had already
+                      discarded, so there was nothing to check. */}
+                  {rejectionReason ? (
+                    <div className="bg-white/70 border border-rose-200 rounded-lg px-3 py-2">
+                      <p className="text-[11px] font-semibold text-rose-700 uppercase tracking-wider mb-0.5">เหตุผลในการปฏิเสธ</p>
+                      <p className="text-xs text-rose-800 whitespace-pre-wrap break-words">{rejectionReason}</p>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-rose-600 text-center">ไม่ได้ระบุเหตุผลไว้ — กรุณาติดต่อฝ่ายการเงิน</p>
+                  )}
                 </div>
               ) : (
                 <div className="p-4 bg-slate-50 border border-slate-100 rounded-xl text-center text-xs text-slate-500">

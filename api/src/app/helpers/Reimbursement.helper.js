@@ -141,9 +141,25 @@ async function detailJSON(record, { canSeeFullBankAccount = false } = {}) {
     bankAccount.number = canSeeFullBankAccount ? bankAccount.number : maskedNumber(bankAccount.number);
   }
 
+  // The flat identity fields below already exist on the LIST response (#42) but were missing
+  // here, so a client holding only a detail payload could not tell which department or project
+  // a reimbursement belonged to. The UI needs exactly that to decide whether the viewer is head
+  // of THIS department — without it the best it could do was "head of any department", which
+  // showed the approve button to the wrong people. Keep the two shapes in step.
+  const department = membership?.department;
+  const project = department?.project;
+  const details = plain.details || [];
+
   return {
     ...plain,
     receipt_link: receiptLink,
+    amount: details.reduce((sum, d) => sum + (Number(d.amount) || 0), 0),
+    department_id: membership?.department_id ?? null,
+    department_name: department?.name ?? null,
+    project_id: department?.project_id ?? null,
+    project_name: project?.name ?? null,
+    requester: membership?.staff ?? null,
+    requester_name: membership?.staff ? `${membership.staff.first_name} ${membership.staff.last_name}` : null,
     staffDept: membership || undefined,
     bankAccount: bankAccount || undefined,
     history: historyRecords.map((entryRecord) => {
@@ -437,11 +453,10 @@ class ReimbursementHelper {
    *  Payment.helper.js's #40), and on fin_approve->transfer rolls the total up to
    *  department/project/tag explicitly (doc 02 §6 gap #1 — no trigger does this yet).
    *
-   *  Real gap surfaced here: `reason` (required on any ->rejected transition per doc 03/04) has
-   *  nowhere to persist — `reimbursement_updatestatus` in the shipped schema has no `reason`
-   *  column at all (unlike the doc's description of it). Still validated/required at the API
-   *  layer since the contract promises it, but the value doesn't survive past this request —
-   *  needs a schema migration (ALTER TABLE ... ADD COLUMN reason TEXT) to actually close. */
+   *  `reason` (required on any ->rejected transition per doc 03/04) is persisted on the status
+   *  row and comes back in the history, so a requester can see why they were rejected. It used
+   *  to be validated and then discarded — reimbursement_updatestatus had no column for it until
+   *  supabase/migrations/20260907000000_add_reimbursement_status_reason.sql. */
   static async changeStatus(reimbursementId, { status, tracking_id, reason }, { staffId, role }) {
     const { Reimbursement, ReimbursementDetail, ReimbursementStatus, StaffDept, Department, Project, ProjectTag, sequelize } =
       require("../models");
@@ -472,7 +487,12 @@ class ReimbursementHelper {
     ApprovalHelper.assertAuthorized(edge, { isHead, isFinance, isOwner, isRequester });
 
     await sequelize.transaction(async (t) => {
-      await ReimbursementStatus.create({ reimbursement_id: reimbursementId, status, staff_id: staffId }, { transaction: t });
+      // `reason` is only meaningful on a rejection; storing whatever was passed alongside an
+      // approval would put explanatory text on a row nothing renders it for.
+      await ReimbursementStatus.create(
+        { reimbursement_id: reimbursementId, status, staff_id: staffId, reason: status === "rejected" ? reason : null },
+        { transaction: t }
+      );
       if (status === "fin_approve") {
         reimbursement.tracking_id = tracking_id;
         await reimbursement.save({ transaction: t });
