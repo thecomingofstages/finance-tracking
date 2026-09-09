@@ -8,37 +8,6 @@ import { StatusBadge } from "@/components/reimburse";
 import BatchPaymentConfirmModal from "@/components/checkslip/BatchPaymentConfirmModal";
 import { getPaymentsApi } from "@/lib/api/payments";
 
-const FALLBACK_PAYMENTS = [
-  {
-    id: "pay-001",
-    _id: "pay-001",
-    payment_id: "pay-001",
-    tracking_id: "PAY-2026-001",
-    title: "ค่าลงทะเบียนเข้าร่วมอบรมเชิงปฏิบัติการ (โครงการ A)",
-    payer: "นายวิชัย สุขสำราญ",
-    channel: "PromptPay QR โครงการ",
-    expected_amount: 250000.0,
-    amount: 250000.0,
-    status: "waiting",
-    created_at: "2026-01-15T10:30:00Z",
-    promptpay_qr_data: "00020101021229370016A0000006770101110313084000000000053037645402500.005802TH6304",
-  },
-  {
-    id: "pay-002",
-    _id: "pay-002",
-    payment_id: "pay-002",
-    tracking_id: "PAY-2026-002",
-    title: "ค่าซื้อสินค้าและของที่ระลึกหน้างาน",
-    payer: "นางสาวอนงค์ รุ่งเรือง",
-    channel: "โอนผ่านธนาคารกสิกรไทย",
-    expected_amount: 180000.0,
-    amount: 180000.0,
-    status: "waiting",
-    created_at: "2026-01-16T14:15:00Z",
-    promptpay_qr_data: "00020101021229370016A0000006770101110313084000000000053037645401800.005802TH6304",
-  },
-];
-
 type Decision = { status: "approved" | "rejected"; actual_amount?: number };
 
 export default function CheckslipPage() {
@@ -78,23 +47,20 @@ export default function CheckslipPage() {
     setIsFetching(true);
     try {
       // Typically, we would pass status filtering to the backend.
-      // Since it's a mock, we fetch all and filter in UI.
+      // We fetch all and filter in UI instead.
       const res = await getPaymentsApi({ limit: 100 });
       const responseData: any = res?.data;
-      
+
       let list: any[] = [];
-      if (responseData && Array.isArray(responseData.data) && responseData.data.length > 0) {
+      if (responseData && Array.isArray(responseData.data)) {
         list = responseData.data;
-      } else if (responseData && Array.isArray(responseData) && responseData.length > 0) {
+      } else if (Array.isArray(responseData)) {
         list = responseData;
       }
 
-      if (list.length === 0) {
-        list = FALLBACK_PAYMENTS;
-      }
       setPayments(list);
     } catch {
-      setPayments(FALLBACK_PAYMENTS);
+      setPayments([]);
     } finally {
       setIsFetching(false);
     }
@@ -215,7 +181,7 @@ export default function CheckslipPage() {
             </div>
           ) : (
             displayedPayments.map((item, idx) => {
-              const rawId = item.payment_id || item._id || item.id || `fallback-${idx}`;
+              const rawId = item.payment_id || item._id || item.id || `payment-${idx}`;
               const trackingId =
                 item.tracking_id || (item._id ? `PAY-${String(item._id).substring(0, 8).toUpperCase()}` : "PAY-N/A");
               const title = item.title || item.purpose || "รายการรับเงิน";

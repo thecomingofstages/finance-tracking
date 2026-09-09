@@ -28,155 +28,6 @@ const STATUS_TABS: { key: StatusFilter; label: string }[] = [
   { key: "rejected", label: "ปฏิเสธ" },
 ];
 
-// Realistic fallback data when API returns empty or mock server is without records
-const FALLBACK_REIMBURSEMENTS = [
-  {
-    id: "reim-001",
-    _id: "019ff642-b9e1-712a-963c-52ae4bd7e73a",
-    tracking_id: "019ff642-b9e1-712a-963c-52ae4bd7e73a",
-    title: "ค่าอุปกรณ์ประกอบฉากรอบซ้อมใหญ่ (ฉากหลัง + อุปกรณ์เวที)",
-    purpose: "ค่าอุปกรณ์ประกอบฉากรอบซ้อมใหญ่ (ฉากหลัง + อุปกรณ์เวที)",
-    amount: 1550000,
-    status: "waiting",
-    latest_status: "waiting",
-    project_name: "The Coming of Stages 3",
-    department_name: "ฝ่ายการละคร",
-    requester_name: "สมชาย ใจดี (Golf)",
-    created_at: "2026-08-01T10:30:00Z",
-    receipt_url: "https://placehold.co/600x800/e2e8f0/1e293b?text=Receipt+001",
-    note: "ซื้อผ้าฉากและโครงเหล็กฉากสำหรับเวทีใหญ่",
-    staff: { nickname: "Golf", first_name: "สมชาย", last_name: "ใจดี" },
-    project: { name: "The Coming of Stages 3" },
-    department: { name: "ฝ่ายการละคร" },
-    status_history: [
-      { status: "waiting", created_at: "2026-08-01T10:30:00Z", staff: null },
-    ],
-  },
-  {
-    id: "reim-002",
-    _id: "019ff642-8888-7abc-def0-123456789002",
-    tracking_id: "019ff642-8888-7abc-def0-123456789002",
-    title: "ค่าเช่าไมโครโฟนไร้สายและมิกเซอร์เสียง",
-    purpose: "ค่าเช่าไมโครโฟนไร้สายและมิกเซอร์เสียง",
-    amount: 850000,
-    status: "head_approve",
-    latest_status: "head_approve",
-    project_name: "The Coming of Stages 3",
-    department_name: "ฝ่ายเสียงและเทคนิค",
-    requester_name: "ชมพู่ สุขใจ (Chompoo)",
-    created_at: "2026-07-30T14:15:00Z",
-    receipt_url: "https://placehold.co/600x800/e2e8f0/1e293b?text=Receipt+002",
-    note: "มัดจำค่าเช่าอุปกรณ์ระบบเสียงรอบการแสดงจริง",
-    staff: { nickname: "Chompoo", first_name: "ชมพู่", last_name: "สุขใจ" },
-    project: { name: "The Coming of Stages 3" },
-    department: { name: "ฝ่ายเสียงและเทคนิค" },
-    status_history: [
-      { status: "waiting", created_at: "2026-07-30T14:15:00Z", staff: null },
-      {
-        status: "head_approve",
-        created_at: "2026-07-31T09:00:00Z",
-        staff: { nickname: "Mark" },
-      },
-    ],
-  },
-  {
-    id: "reim-003",
-    _id: "019ff642-9999-7abc-def0-123456789003",
-    tracking_id: "019ff642-9999-7abc-def0-123456789003",
-    title: "ค่าพิมพ์โปสเตอร์และแผ่นพับประชาสัมพันธ์",
-    purpose: "ค่าพิมพ์โปสเตอร์และแผ่นพับประชาสัมพันธ์",
-    amount: 1240000,
-    status: "fin_approve",
-    latest_status: "fin_approve",
-    project_name: "The Coming of Stages 3",
-    department_name: "ฝ่ายประชาสัมพันธ์",
-    requester_name: "มาร์ค พร้อมพงษ์ (Mark)",
-    created_at: "2026-07-28T11:00:00Z",
-    receipt_url: "https://placehold.co/600x800/e2e8f0/1e293b?text=Receipt+003",
-    note: "สั่งพิมพ์โปสเตอร์ไซส์ A2 จำนวน 200 ใบ และแผ่นพับ 1,000 ชุด",
-    staff: { nickname: "Mark", first_name: "มาร์ค", last_name: "พร้อมพงษ์" },
-    project: { name: "The Coming of Stages 3" },
-    department: { name: "ฝ่ายประชาสัมพันธ์" },
-    status_history: [
-      { status: "waiting", created_at: "2026-07-28T11:00:00Z", staff: null },
-      {
-        status: "head_approve",
-        created_at: "2026-07-29T10:00:00Z",
-        staff: { nickname: "Beam" },
-      },
-      {
-        status: "fin_approve",
-        created_at: "2026-07-30T16:00:00Z",
-        staff: { nickname: "Golf" },
-      },
-    ],
-  },
-  {
-    id: "reim-004",
-    _id: "019ff642-aaaa-7abc-def0-123456789004",
-    tracking_id: "019ff642-aaaa-7abc-def0-123456789004",
-    title: "ค่าอาหารและเครื่องดื่มสำหรับทีมงานซ้อมใหญ่",
-    purpose: "ค่าอาหารและเครื่องดื่มสำหรับทีมงานซ้อมใหญ่",
-    amount: 420000,
-    status: "transfer",
-    latest_status: "transfer",
-    project_name: "The Coming of Stages 3",
-    department_name: "ฝ่ายสวัสดิการ",
-    requester_name: "บีม มงคล (Beam)",
-    created_at: "2026-07-25T16:45:00Z",
-    receipt_url: "https://placehold.co/600x800/e2e8f0/1e293b?text=Receipt+004",
-    note: "ข้าวกล่อง 50 ชุด สำหรับทีมงานและนักแสดงซ้อมดนตรีสด",
-    staff: { nickname: "Beam", first_name: "บีม", last_name: "มงคล" },
-    project: { name: "The Coming of Stages 3" },
-    department: { name: "ฝ่ายสวัสดิการ" },
-    status_history: [
-      { status: "waiting", created_at: "2026-07-25T16:45:00Z", staff: null },
-      {
-        status: "head_approve",
-        created_at: "2026-07-26T09:30:00Z",
-        staff: { nickname: "Chompoo" },
-      },
-      {
-        status: "fin_approve",
-        created_at: "2026-07-26T14:00:00Z",
-        staff: { nickname: "Golf" },
-      },
-      {
-        status: "transfer",
-        created_at: "2026-07-27T11:20:00Z",
-        staff: { nickname: "Golf" },
-      },
-    ],
-  },
-  {
-    id: "reim-005",
-    _id: "018f7a90-5555-7000-8000-000000000005",
-    tracking_id: "REIM-2026-005",
-    title: "ค่าจัดทำเสื้อทีมและของที่ระลึก staff",
-    purpose: "ค่าจัดทำเสื้อทีมและของที่ระลึก staff",
-    amount: 1890000,
-    status: "rejected",
-    latest_status: "rejected",
-    project_name: "The Coming of Stages 3",
-    department_name: "ฝ่ายบริหารทั่วไป",
-    requester_name: "สมชาย ใจดี (Golf)",
-    created_at: "2026-07-22T09:10:00Z",
-    receipt_url: "https://placehold.co/600x800/e2e8f0/1e293b?text=Receipt+005",
-    note: "ไม่อนุมัติเนื่องจากเกินงบประมาณจัดสรรประจำฝ่าย",
-    staff: { nickname: "Golf", first_name: "สมชาย", last_name: "ใจดี" },
-    project: { name: "The Coming of Stages 3" },
-    department: { name: "ฝ่ายบริหารทั่วไป" },
-    status_history: [
-      { status: "waiting", created_at: "2026-07-22T09:10:00Z", staff: null },
-      {
-        status: "rejected",
-        created_at: "2026-07-23T13:00:00Z",
-        staff: { nickname: "Mark" },
-      },
-    ],
-  },
-];
-
 type ScopeTab = "my" | "review" | "all";
 
 export default function ReimbursementsPage() {
@@ -225,17 +76,6 @@ export default function ReimbursementsPage() {
   const reviewCount = useMemo(() => reimbursements.filter(isPendingReviewItem).length, [reimbursements]);
   const allCount = reimbursements.length;
 
-  const filterFallbackData = (filter: StatusFilter) => {
-    if (filter === "all") return FALLBACK_REIMBURSEMENTS;
-    return FALLBACK_REIMBURSEMENTS.filter(
-      (item) =>
-        item.status === filter ||
-        item.latest_status === filter ||
-        (filter === "transfer" &&
-          (item.status === "completed" || item.latest_status === "completed"))
-    );
-  };
-
   const fetchReimbursements = async () => {
     setIsLoading(true);
     try {
@@ -253,16 +93,12 @@ export default function ReimbursementsPage() {
           ? (res.data as any).items
           : [];
 
-        if (rawList.length > 0) {
-          setReimbursements(rawList);
-        } else {
-          setReimbursements(filterFallbackData(statusFilter));
-        }
+        setReimbursements(rawList);
       } else {
-        setReimbursements(filterFallbackData(statusFilter));
+        setReimbursements([]);
       }
     } catch {
-      setReimbursements(filterFallbackData(statusFilter));
+      setReimbursements([]);
     } finally {
       setIsLoading(false);
     }
@@ -507,6 +343,10 @@ export default function ReimbursementsPage() {
               <p className="text-xs text-slate-500 max-w-sm mx-auto">
                 {searchQuery
                   ? "ลองค้นหาด้วยคำอื่น หรือเปลี่ยนตัวกรองสถานะ"
+                  : scopeTab === "my"
+                  ? "คุณยังไม่มีรายการขอเบิกเงิน กดปุ่ม “ขอเบิกเงินใหม่” เพื่อเริ่มยื่นคำขอ"
+                  : scopeTab === "review"
+                  ? "ไม่มีรายการที่รอการตรวจสอบจากคุณในขณะนี้"
                   : "ยังไม่มีรายการขอเบิกเงินในระบบ"}
               </p>
             </div>

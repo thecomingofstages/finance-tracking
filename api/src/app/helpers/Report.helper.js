@@ -2,7 +2,6 @@ const { QueryTypes } = require("sequelize");
 const PDF = require("../utils/PDF.util");
 const ApiError = require("../utils/ApiError.util");
 const { db } = require("../config/init");
-const fixtures = require("../../mocks/fixtures");
 
 const SOURCE_TYPES = ["enroll", "merch", "spon", "other"];
 

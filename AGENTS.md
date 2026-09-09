@@ -310,6 +310,26 @@ For human collaborators, see the per-folder READMEs and `docs/`.
   anywhere) and `reason` (in the contract, no column) were both accepted and silently dropped.
   Worth a sweep of the rest of the contract.
 
+### Frontend mock-fallback removal (2026-09-08)
+
+- **An empty API list used to render fabricated data.** Every list/detail page in `web/src/app/`
+  carried a `MOCK_`/`FALLBACK_` constant and did `if (list.length > 0) setX(list); else setX(MOCK)`.
+  With a cleared database the UI still showed "The Coming of Stages 3" and friends, which reads
+  as a backend bug and is not one — `MOCK_MODE=false` was working correctly the whole time.
+  The constants are gone; these pages now render their (already-present, Thai) empty states.
+- **Never reintroduce a data fallback for an empty response.** Empty and broken are different
+  states and must look different. The old `catch {}` blocks made a 500 or a 401 render as a
+  populated dashboard.
+- `reimburse/[id]/page.tsx` additionally hardcoded a bank account number and bank name as `||`
+  defaults on the page that drives the transfer action. Placeholder payment details do not
+  belong anywhere a finance user could act on them.
+- **Still open:** the `catch {}` blocks are silent — a real fetch failure is indistinguishable
+  from an empty result. Deliberately left for a separate error-state pass.
+- `MOCK_DEV_USER` in `web/src/context/AuthContext.tsx` is **intentionally kept** — it is
+  dev-only (`NODE_ENV === "development"`) and exists so the UI previews without a login.
+- `api/` unit tests (`npx jest` in `api/`) fail wholesale (167/224) while `MOCK_MODE=false`,
+  because the suite was written against mock mode. Pre-existing; unrelated to frontend work.
+
 ### Reimbursement approval pass (2026-09-07, `kkattmos/fix-reimburse-approval`)
 
 - **`POST /reimbursements/:id/status` takes `status`, `tracking_id`, `reason` — there is no

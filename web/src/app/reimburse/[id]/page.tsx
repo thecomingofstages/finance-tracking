@@ -51,58 +51,12 @@ export default function ReimbursementDetailPage() {
         setRecord((payload as any).record || payload);
         setHistory((payload as any).history || []);
       } else {
-        // Fallback realistic mock data if backend not populated
-        setRecord({
-          _id: id || "019ff642-b9e1-712a-963c-52ae4bd7e73a",
-          tracking_id: "REIM-2026-001",
-          title: "ค่าอุปกรณ์ประกอบฉากรอบซ้อมใหญ่ (ฉากหลัง + อุปกรณ์เวที)",
-          purpose: "ซื้อผ้าฉากและโครงเหล็กสำหรับเวทีใหญ่ในรอบการแสดงจริง",
-          amount: 15500,
-          latest_status: "waiting",
-          project_name: "The Coming of Stages 3",
-          department_name: "ฝ่ายการละคร",
-          created_at: new Date().toISOString(),
-          receipt_link: "https://placehold.co/800x1100/e2e8f0/1e293b?text=Tax+Invoice+Receipt",
-          details: [
-            { title: "ผ้าฉากขนาด 6x4 เมตร (สีขาวและดำ)", amount: 6500 },
-            { title: "โครงเหล็กข้อต่อเวที 10 ชุด", amount: 9000 },
-          ],
-          staff: { nickname: "Golf", first_name: "สมชาย", last_name: "ใจดี" },
-          department: { name: "ฝ่ายการละคร" },
-          project: { name: "The Coming of Stages 3" },
-          bank_account: {
-            bank_name: "ธนาคารกสิกรไทย (KBANK)",
-            account_number: "084-2-94812-5",
-            account_name: "นาย สมชาย ใจดี",
-          },
-        });
+        setRecord(null);
+        setHistory([]);
       }
     } catch {
-      // Fallback
-      setRecord({
-        _id: id || "019ff642-b9e1-712a-963c-52ae4bd7e73a",
-        tracking_id: "REIM-2026-001",
-        title: "ค่าอุปกรณ์ประกอบฉากรอบซ้อมใหญ่ (ฉากหลัง + อุปกรณ์เวที)",
-        purpose: "ซื้อผ้าฉากและโครงเหล็กสำหรับเวทีใหญ่ในรอบการแสดงจริง",
-        amount: 15500,
-        latest_status: "waiting",
-        project_name: "The Coming of Stages 3",
-        department_name: "ฝ่ายการละคร",
-        created_at: new Date().toISOString(),
-        receipt_link: "https://placehold.co/800x1100/e2e8f0/1e293b?text=Tax+Invoice+Receipt",
-        details: [
-          { title: "ผ้าฉากขนาด 6x4 เมตร (สีขาวและดำ)", amount: 6500 },
-          { title: "โครงเหล็กข้อต่อเวที 10 ชุด", amount: 9000 },
-        ],
-        staff: { nickname: "Golf", first_name: "สมชาย", last_name: "ใจดี" },
-        department: { name: "ฝ่ายการละคร" },
-        project: { name: "The Coming of Stages 3" },
-        bank_account: {
-          bank_name: "ธนาคารกสิกรไทย (KBANK)",
-          account_number: "084-2-94812-5",
-          account_name: "นาย สมชาย ใจดี",
-        },
-      });
+      setRecord(null);
+      setHistory([]);
     } finally {
       setIsFetching(false);
     }
@@ -239,19 +193,21 @@ export default function ReimbursementDetailPage() {
   const requesterName =
     record.staff?.nickname
       ? `${record.staff.first_name || ""} ${record.staff.last_name || ""} (${record.staff.nickname})`.trim()
-      : record.requester_name || "สมชาย ใจดี (Golf)";
-  const departmentName = record.department?.name || record.department_name || "ฝ่ายการละคร";
-  const projectName = record.project?.name || record.project_name || "The Coming of Stages 3";
+      : record.requester_name || "ไม่ระบุผู้ยื่น";
+  const departmentName = record.department?.name || record.department_name || "ไม่ระบุฝ่าย";
+  const projectName = record.project?.name || record.project_name || "ไม่ระบุโครงการ";
   const purpose = record.purpose || record.title || "ไม่มีการระบุวัตถุประสงค์";
   const receiptUrl = record.receipt_link || record.receipt_url || record.receipt;
 
-  // Bank info
-  const rawBankAcc = record.bank_account?.account_number || "084-2-94812-5";
-  const bankAccDisplay =
-    showFullBankAcc || isFinanceOrAdmin
-      ? rawBankAcc
-      : rawBankAcc.replace(/^(\d{3})-\d-\d{4}-(\d)$/, "$1-X-XXXX-$2");
-  const bankName = record.bank_account?.bank_name || "ธนาคารกสิกรไทย (KBANK)";
+  // Bank info. No placeholder account number here on purpose: this page drives the transfer
+  // action, and a stand-in digit string is something a finance user could actually pay out to.
+  const rawBankAcc = record.bank_account?.account_number || "";
+  const bankAccDisplay = !rawBankAcc
+    ? "ไม่ระบุเลขบัญชี"
+    : showFullBankAcc || isFinanceOrAdmin
+    ? rawBankAcc
+    : rawBankAcc.replace(/^(\d{3})-\d-\d{4}-(\d)$/, "$1-X-XXXX-$2");
+  const bankName = record.bank_account?.bank_name || "ไม่ระบุธนาคาร";
   const accountHolderName = record.bank_account?.account_name || requesterName;
 
   // Timeline Timestamps
