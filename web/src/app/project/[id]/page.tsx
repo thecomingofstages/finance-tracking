@@ -38,43 +38,6 @@ export interface ProjectDetail {
   status?: string;
 }
 
-// ── Fallback mock data ──────────────────────────────────────────
-
-const MOCK_PROJECT: ProjectDetail = {
-  id: "p1", _id: "p1", name: "The Coming of Stages 3", code: "PRJ-2026-001",
-  description: "โครงการผลิตรายการเวทีการแสดงเพื่อความบันเทิงและพัฒนาศักยภาพชุมชน",
-  allocated_budget: 1500000, total_income: 820000, total_expense: 450000, status: "active",
-};
-
-const MOCK_SOURCES = [
-  { _id: "s1", type: "enroll", name: "The Coming of Stages 3 — บัตร Early Bird", expect_amount: 300000, actual_amount: 280000 },
-  { _id: "s2", type: "enroll", name: "The Coming of Stages 3 — บัตร Regular", expect_amount: 200000, actual_amount: 150000 },
-  { _id: "s3", type: "merch", name: "เสื้อทีม Official", expect_amount: 100000, actual_amount: 90000 },
-  { _id: "s4", type: "spon", name: "บริษัท ABC จำกัด", expect_amount: 150000, actual_amount: 150000 },
-  { _id: "s5", type: "spon", name: "บริษัท XYZ จำกัด (มหาชน)", expect_amount: 100000, actual_amount: 100000 },
-  { _id: "s6", type: "other", name: "เงินสนับสนุนจากมหาวิทยาลัย", expect_amount: 50000, actual_amount: 50000 },
-];
-
-const MOCK_DEPARTMENTS = [
-  { id: "d1", name: "ฝ่ายการละคร", allocated_budget: 600000, total_expense: 200000 },
-  { id: "d2", name: "ฝ่ายการเงินและบัญชี", allocated_budget: 400000, total_expense: 150000 },
-  { id: "d3", name: "ฝ่ายเทคนิคและสถานที่", allocated_budget: 500000, total_expense: 100000 },
-];
-
-const MOCK_TAGS = [
-  { id: "t1", name: "ค่าอุปกรณ์/วิก/เครื่องแต่งกาย", allocated_budget: 200000, total_income: 0, total_expense: 180000 },
-  { id: "t2", name: "ค่าสถานที่/เวที", allocated_budget: 300000, total_income: 0, total_expense: 150000 },
-  { id: "t3", name: "ค่าเบี้ยเลี้ยง/สวัสดิการ", allocated_budget: 100000, total_income: 0, total_expense: 80000 },
-  { id: "t4", name: "ค่าสื่อและประชาสัมพันธ์", allocated_budget: 80000, total_income: 0, total_expense: 40000 },
-];
-
-const MOCK_REIMBURSEMENTS = [
-  { id: "reim-001", _id: "reim-001", title: "ค่าอุปกรณ์ประกอบฉากรอบซ้อมใหญ่", amount: 1550000, status: "waiting", department_name: "ฝ่ายการละคร", created_at: "2026-08-01T10:30:00Z", tag_name: "ค่าอุปกรณ์/วิก/เครื่องแต่งกาย" },
-  { id: "reim-002", _id: "reim-002", title: "ค่าเช่าไมโครโฟนไร้สาย", amount: 850000, status: "head_approve", department_name: "ฝ่ายเทคนิคและสถานที่", created_at: "2026-07-30T14:15:00Z", tag_name: "ค่าสถานที่/เวที" },
-  { id: "reim-003", _id: "reim-003", title: "ค่าพิมพ์โปสเตอร์", amount: 1240000, status: "fin_approve", department_name: "ฝ่ายการเงินและบัญชี", created_at: "2026-07-28T11:00:00Z", tag_name: "ค่าสื่อและประชาสัมพันธ์" },
-  { id: "reim-004", _id: "reim-004", title: "ค่าอาหารซ้อมใหญ่", amount: 420000, status: "transfer", department_name: "ฝ่ายการละคร", created_at: "2026-07-25T16:45:00Z", tag_name: "ค่าเบี้ยเลี้ยง/สวัสดิการ" },
-];
-
 import { formatCurrencyTH } from "@/lib/format";
 
 // ── helpers ──────────────────────────────────────────
@@ -116,20 +79,20 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
     try {
       const projRes = await getProjectDetailApi(projectId);
       const pData = (projRes.data as any)?.data || projRes.data;
-      setProject(pData || { ...MOCK_PROJECT, id: projectId });
-    } catch { setProject({ ...MOCK_PROJECT, id: projectId }); }
+      setProject(pData || null);
+    } catch { setProject(null); }
 
-    try { const r = await getProjectSourcesApi(projectId); const l = extractList(r.data); setSources(l.length > 0 ? l : MOCK_SOURCES); }
-    catch { setSources(MOCK_SOURCES); }
+    try { const r = await getProjectSourcesApi(projectId); setSources(extractList(r.data)); }
+    catch { setSources([]); }
 
-    try { const r = await getProjectDepartmentsApi(projectId); const l = extractList(r.data); setDepartments(l.length > 0 ? l : MOCK_DEPARTMENTS); }
-    catch { setDepartments(MOCK_DEPARTMENTS); }
+    try { const r = await getProjectDepartmentsApi(projectId); setDepartments(extractList(r.data)); }
+    catch { setDepartments([]); }
 
-    try { const r = await getProjectTagsApi(projectId); const l = extractList(r.data); setTags(l.length > 0 ? l : MOCK_TAGS); }
-    catch { setTags(MOCK_TAGS); }
+    try { const r = await getProjectTagsApi(projectId); setTags(extractList(r.data)); }
+    catch { setTags([]); }
 
-    try { const r = await getReimbursementsApi({ project_id: projectId, limit: 200 }); const l = extractList(r.data); setReimbursements(l.length > 0 ? l : MOCK_REIMBURSEMENTS); }
-    catch { setReimbursements(MOCK_REIMBURSEMENTS); }
+    try { const r = await getReimbursementsApi({ project_id: projectId, limit: 200 }); setReimbursements(extractList(r.data)); }
+    catch { setReimbursements([]); }
 
     setIsLoading(false);
   };
@@ -155,6 +118,11 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
         <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm">
           {isLoading ? (
             <div className="animate-pulse space-y-3"><div className="h-7 bg-slate-200 rounded w-1/3" /><div className="h-4 bg-slate-100 rounded w-2/3" /></div>
+          ) : !project ? (
+            <div className="text-center py-6 space-y-1.5">
+              <p className="text-base font-semibold text-slate-700">ไม่พบโครงการนี้</p>
+              <p className="text-xs text-slate-500">โครงการอาจถูกลบไปแล้ว หรือคุณไม่มีสิทธิ์เข้าถึง</p>
+            </div>
           ) : (
             <div>
               <div className="flex items-center gap-3 flex-wrap mb-1">

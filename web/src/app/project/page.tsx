@@ -17,36 +17,6 @@ interface ProjectItem {
   total_expense?: number;
 }
 
-const MOCK_FALLBACK_PROJECTS: ProjectItem[] = [
-  {
-    _id: "p1",
-    name: "The Coming of Stages 3",
-    code: "PRJ-2026-001",
-    description: "โครงการผลิตรายการเวทีการแสดงเพื่อความบันเทิงและพัฒนาศักยภาพชุมชน",
-    allocated_budget: 150000000,
-    actual_expense: 45000000,
-    total_expense: 45000000,
-  },
-  {
-    _id: "p2",
-    name: "ระบบบริหารการเงินและงบประมาณ",
-    code: "PRJ-2026-002",
-    description: "ระบบติดตามงบประมาณ การเบิกจ่าย และการอนุมัติรายจ่ายขององค์กร",
-    allocated_budget: 80000000,
-    actual_expense: 72000000,
-    total_expense: 72000000,
-  },
-  {
-    _id: "p3",
-    name: "โครงการจัดหาครุภัณฑ์เทคโนโลยี 2026",
-    code: "PRJ-2026-003",
-    description: "จัดซื้อเครื่องคอมพิวเตอร์และอุปกรณ์ไอทีสำหรับการทำงานของเจ้าหน้าที่",
-    allocated_budget: 50000000,
-    actual_expense: 12000000,
-    total_expense: 12000000,
-  },
-];
-
 export default function ProjectsPage() {
   const { user } = useAuth();
   const [projects, setProjects] = useState<ProjectItem[]>([]);
@@ -67,16 +37,12 @@ export default function ProjectsPage() {
           ? (res.data as any).data
           : [];
 
-        if (dataList.length > 0) {
-          setProjects(dataList);
-        } else {
-          setProjects(MOCK_FALLBACK_PROJECTS);
-        }
+        setProjects(dataList);
       } else {
-        setProjects(MOCK_FALLBACK_PROJECTS);
+        setProjects([]);
       }
     } catch {
-      setProjects(MOCK_FALLBACK_PROJECTS);
+      setProjects([]);
     } finally {
       setIsLoading(false);
     }
@@ -206,8 +172,15 @@ export default function ProjectsPage() {
               />
             </svg>
             <p className="text-slate-500 font-medium text-sm">
-              ไม่พบโครงการที่ตรงกับคำค้นหา
+              {searchQuery.trim()
+                ? "ไม่พบโครงการที่ตรงกับคำค้นหา"
+                : "ยังไม่มีโครงการในระบบ"}
             </p>
+            {!searchQuery.trim() && (
+              <p className="text-slate-400 text-xs mt-1.5">
+                เมื่อมีการสร้างโครงการ รายการจะแสดงที่นี่
+              </p>
+            )}
           </div>
         )}
 
